@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import socket
 from datetime import timedelta
 from typing import Any, Dict, Optional
 
@@ -87,6 +88,12 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
             preset_a_raw = ""
             preset_b_raw = ""
 
+            # Helper to detect fatal socket errors
+            def is_fatal_error(err: Exception) -> bool:
+                return isinstance(
+                    err, (socket.error, BrokenPipeError, ConnectionResetError, OSError)
+                )
+
             # STATUS (quick ack)
             try:
                 _LOGGER.debug("Sending command 0x45 (STATUS)")
@@ -94,6 +101,9 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug("STATUS response: %s", status_raw[:100])
             except Exception as err:
                 _LOGGER.warning("STATUS command failed: %s", err)
+                if is_fatal_error(err):
+                    self._connected = False
+                    raise  # Re-raise to abort polling
 
             # ASSIGNMENTS (speaker mapping)
             try:
@@ -102,6 +112,9 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug("ASSIGNMENTS response: %s", assignments_raw[:100])
             except Exception as err:
                 _LOGGER.warning("ASSIGNMENTS command failed: %s", err)
+                if is_fatal_error(err):
+                    self._connected = False
+                    raise
 
             # PRESET A (full data)
             try:
@@ -112,6 +125,9 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
                 )
             except Exception as err:
                 _LOGGER.warning("PRESET A command failed: %s", err)
+                if is_fatal_error(err):
+                    self._connected = False
+                    raise
 
             # PRESET B (full data)
             try:
@@ -122,6 +138,9 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
                 )
             except Exception as err:
                 _LOGGER.warning("PRESET B command failed: %s", err)
+                if is_fatal_error(err):
+                    self._connected = False
+                    raise
 
             # Parse responses (even if some commands failed)
             data = {
@@ -193,10 +212,34 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
         return result
 
     def send_command(self, code: int) -> str:
-        """Send raw command and return response (for services)."""
+        """Send raw command synchronously with auto-reconnect on connection failure."""
         if not self._connected:
             self._ensure_connected()
-        return self._get_client().send(code)
+
+        try:
+            return self._get_client().send(code)
+        except (socket.error, BrokenPipeError, ConnectionResetError, OSError) as err:
+            _LOGGER.warning(
+                "Connection lost during send (0x%02x): %s. Reconnecting...", code, err
+            )
+            # Mark connection as dead
+            self._connected = False
+            # Close and discard old client
+            try:
+                if self.client:
+                    self.client.close()
+            except Exception:
+                pass
+            self.client = None
+            # Reconnect and retry once
+            try:
+                self._ensure_connected()
+                return self._get_client().send(code)
+            except Exception as retry_err:
+                _LOGGER.error("Retry after reconnect failed: %s", retry_err)
+                raise UpdateFailed(
+                    f"Command failed after reconnect: {retry_err}"
+                ) from retry_err
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
