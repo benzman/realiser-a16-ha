@@ -22,9 +22,53 @@ async def async_setup_entry(
 
     async_add_entities(
         [
+            RealiserA16PowerSwitch(coordinator),
             RealiserA16AllSoloSwitch(coordinator),
         ]
     )
+
+
+class RealiserA16PowerSwitch(SwitchEntity):
+    """Switch for Power/Standby."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:power"
+    _attr_entity_registry_enabled_default = True
+
+    def __init__(self, coordinator: RealiserA16DataUpdateCoordinator) -> None:
+        """Initialize the switch."""
+        self.coordinator = coordinator
+        self._attr_unique_id = f"{coordinator.host}_power"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, coordinator.host)},
+            "name": f"Realiser A16 ({coordinator.host})",
+            "manufacturer": "Smyth Research",
+            "model": "Realiser A16",
+        }
+
+    @property
+    def name(self) -> str:
+        """Return the name."""
+        return "Power"
+
+    @property
+    def is_on(self) -> bool:
+        """Return true if powered on."""
+        status = self.coordinator.data.get("status", {})
+        pwr = status.get("PWR", "").upper()
+        if pwr:
+            return pwr == "ON"
+        return True  # No PWR field = device is on (returns preset data)
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn on power."""
+        await self.hass.async_add_executor_job(self.coordinator.send_command, 0x2C)
+        await self.coordinator.async_request_refresh()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn off power (standby)."""
+        await self.hass.async_add_executor_job(self.coordinator.send_command, 0x2D)
+        await self.coordinator.async_request_refresh()
 
 
 class RealiserA16AllSoloSwitch(SwitchEntity):

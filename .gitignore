@@ -51,3 +51,13 @@ site/
 # Test files
 tests/
 test_*.py
+
+# Binary files
+*.pdf
+*.svs
+*.dc7
+*.zip
+*.bin
+*.pcapng
+*.xml
+commands.md

@@ -109,6 +109,22 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
                     self._connected = False
                     raise
 
+            # POWER STATUS (0x2d returns PWR=STANDBY when in standby, preset data when on)
+            try:
+                _LOGGER.debug("Sending command 0x2d (POWER STATUS)")
+                power_raw = client.send(0x2D)
+                _LOGGER.debug("POWER response: %s", power_raw[:100])
+                # Parse power status into status dict
+                if "PWR=" in power_raw:
+                    for token in power_raw.split("\x00"):
+                        if "=" in token:
+                            k, v = token.split("=", 1)
+                            status_raw += f"\x00{k}={v}"
+            except TimeoutError:
+                _LOGGER.warning("POWER STATUS command timed out")
+            except Exception as err:
+                _LOGGER.warning("POWER STATUS command failed: %s", err)
+
             # ASSIGNMENTS (speaker mapping)
             try:
                 _LOGGER.debug("Sending command 0x37 (ASSIGNMENTS)")
