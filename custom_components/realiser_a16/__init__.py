@@ -79,8 +79,8 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
     def _fetch_data(self) -> Dict[str, Any]:
         """Fetch actual data from device."""
         try:
+            # Ensure connection first (reconnects if needed)
             self._ensure_connected()
-            client = self._get_client()
 
             # Poll essential commands with individual error handling
             status_raw = ""
@@ -88,31 +88,10 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
             preset_a_raw = ""
             preset_b_raw = ""
 
-            # Helper to detect socket errors (but not timeouts - timeouts are acceptable)
-            def is_fatal_error(err: Exception) -> bool:
-                # BrokenPipe, ConnectionReset, etc. are fatal
-                # But TimeoutError we treat as "no response" - try other commands
-                return isinstance(err, (BrokenPipeError, ConnectionResetError)) or (
-                    isinstance(err, OSError) and not isinstance(err, TimeoutError)
-                )
-
-            def send_with_reconnect(code: int, current_raw: str) -> str:
-                """Send command, reconnect if needed."""
-                try:
-                    return client.send(code)
-                except Exception as err:
-                    if is_fatal_error(err):
-                        _LOGGER.warning("Connection lost, reconnecting...")
-                        self._connected = False
-                        self._ensure_connected()
-                        client = self._get_client()
-                        return client.send(code)
-                    raise
-
             # STATUS (quick ack)
             try:
                 _LOGGER.debug("Sending command 0x45 (STATUS)")
-                status_raw = send_with_reconnect(0x45, status_raw)
+                status_raw = self.send_command(0x45)
                 _LOGGER.debug("STATUS response: %s", status_raw[:100])
             except TimeoutError:
                 _LOGGER.warning("STATUS command timed out - will try other commands")
@@ -122,7 +101,7 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
             # POWER STATUS (0x2d returns PWR=STANDBY when in standby, preset data when on)
             try:
                 _LOGGER.debug("Sending command 0x2d (POWER STATUS)")
-                power_raw = send_with_reconnect(0x2D, status_raw)
+                power_raw = self.send_command(0x2D)
                 _LOGGER.debug("POWER response: %s", power_raw[:100])
                 # Parse power status into status dict
                 if "PWR=" in power_raw:
@@ -138,7 +117,7 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
             # ASSIGNMENTS (speaker mapping)
             try:
                 _LOGGER.debug("Sending command 0x37 (ASSIGNMENTS)")
-                assignments_raw = send_with_reconnect(0x37, status_raw)
+                assignments_raw = self.send_command(0x37)
                 _LOGGER.debug("ASSIGNMENTS response: %s", assignments_raw[:100])
             except TimeoutError:
                 _LOGGER.warning("ASSIGNMENTS command timed out")
@@ -148,7 +127,7 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
             # PRESET A (full data) - most important
             try:
                 _LOGGER.debug("Sending command 0x46 (PRESET A)")
-                preset_a_raw = send_with_reconnect(0x46, status_raw)
+                preset_a_raw = self.send_command(0x46)
                 _LOGGER.debug(
                     "PRESET A keys: %s", self._parse_preset(preset_a_raw).keys()
                 )
@@ -160,7 +139,7 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
             # PRESET B (full data)
             try:
                 _LOGGER.debug("Sending command 0x47 (PRESET B)")
-                preset_b_raw = send_with_reconnect(0x47, status_raw)
+                preset_b_raw = self.send_command(0x47)
                 _LOGGER.debug(
                     "PRESET B keys: %s", self._parse_preset(preset_b_raw).keys()
                 )
