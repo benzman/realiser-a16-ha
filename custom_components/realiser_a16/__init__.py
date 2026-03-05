@@ -66,9 +66,13 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
                 client.connect()
                 self._connected = True
                 _LOGGER.info("Connected to Realiser A16 at %s:%s", self.host, self.port)
+                # Wir warten kurz nach connect, damit der A16 bereit ist
+                import time
+
+                time.sleep(0.2)
         except Exception as err:
             self._connected = False
-            _LOGGER.error("Failed to connect to %s:%s: %s", self.host, self.port, err)
+            _LOGGER.exception("Failed to connect to %s:%s", self.host, self.port)
             raise UpdateFailed(f"Connection failed: {err}") from err
 
     def _fetch_data(self) -> Dict[str, Any]:
@@ -213,7 +217,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Forward to platforms
     await hass.config_entries.async_forward_entry_setups(
-        entry, ["media_player", "sensor", "switch", "number"]
+        entry, ["media_player", "sensor", "switch"]
     )
 
     return True
@@ -221,7 +225,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    platforms = ["media_player", "sensor", "switch", "number"]
+    platforms = ["media_player", "sensor", "switch"]
     unload_ok = await hass.config_entries.async_unload_platforms(entry, platforms)
 
     if unload_ok and entry.entry_id in hass.data[DOMAIN]:
