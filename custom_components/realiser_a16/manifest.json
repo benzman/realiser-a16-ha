@@ -1,0 +1,11 @@
+{
+  "domain": "realiser_a16",
+  "name": "Realiser A16",
+  "description": "Integration for Realiser A16 AV processor via TCP IP commands",
+  "documentation": "https://github.com/smyth-research/realiser-a16",
+  "codeowners": ["@smyth-research"],
+  "requirements": [],
+  "version": "0.1.0",
+  "issue_tracker": "https://github.com/smyth-research/realiser-a16/issues",
+  "homeassistant": "2024.1.0"
+}

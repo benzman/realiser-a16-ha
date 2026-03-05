@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.venv
+.pytest_cache
+
+# Home Assistant
+.storage/
+*.db
+*.db-journal
+*.sqlite
+deps/
+__pycache__/
+*.pyc
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Custom Component Development
+.dev/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+site/
+
+# Backup files
+*.bak
+*.backup
+
+# Test files
+tests/
+test_*.py
