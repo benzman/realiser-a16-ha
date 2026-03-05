@@ -92,32 +92,54 @@ class RealiserA16ConfigFlow(config_entries.ConfigFlow, domain="realiser_a16"):
         )
 
     async def _test_connection(self):
-        """Test connection to the A16 with multiple commands."""
+        """Test connection to the A16 with retry and multiple commands."""
         client = None
         try:
-            client = RealiserA16Hex(self._host, self._port, self._timeout)
-
-            # Connect (blocking, so use executor)
+            # Connect with longer timeout for initial handshake
+            client = RealiserA16Hex(self._host, self._port, timeout=10.0)
             await self.hass.async_add_executor_job(client.connect)
             _LOGGER.debug("TCP connection established to %s:%s", self._host, self._port)
 
-            # Try multiple commands to verify protocol
-            test_commands = [0x45, 0x37, 0x46]
-            for cmd in test_commands:
+            # Try different commands - some A16 firmware versions only respond to certain commands
+            # depending on state. Try STATUS first (quick), then ASSIGNMENTS, then VERSION.
+            test_commands = [
+                (0x45, "STATUS"),
+                (0x37, "ASSIGNMENTS"),
+                (0x40, "VERSION"),
+                (0x41, "MODEL"),
+            ]
+
+            for cmd, name in test_commands:
                 try:
+                    _LOGGER.debug("Sending test command: 0x%02x (%s)", cmd, name)
                     response = await self.hass.async_add_executor_job(client.send, cmd)
                     if response:
                         _LOGGER.debug(
-                            "Command 0x%02x successful: %s", cmd, response[:50]
+                            "Command 0x%02x (%s) successful: %s",
+                            cmd,
+                            name,
+                            response[:100],
                         )
+                        # We got a response - connection works!
+                        return True
                     else:
-                        _LOGGER.warning("Command 0x%02x returned empty response", cmd)
+                        _LOGGER.debug(
+                            "Command 0x%02x (%s) returned empty response", cmd, name
+                        )
+                except socket.timeout:
+                    _LOGGER.debug(
+                        "Command 0x%02x (%s) timed out, trying next...", cmd, name
+                    )
+                    continue
                 except Exception as err:
-                    _LOGGER.warning("Command 0x%02x failed: %s", cmd, err)
-                    # Don't raise yet - try next command
+                    _LOGGER.debug("Command 0x%02x (%s) failed: %s", cmd, name, err)
+                    continue
 
-            # Success if we got at least one response
-            return True
+            # No command succeeded
+            _LOGGER.warning(
+                "All test commands failed - device may not support TCP protocol"
+            )
+            return False
 
         finally:
             if client:
