@@ -73,12 +73,29 @@ class RealiserA16ConfigFlow(config_entries.ConfigFlow, domain="realiser_a16"):
                     vol.Coerce(int), vol.Range(min=512, max=65535)
                 ),
                 vol.Optional(CONF_TIMEOUT, default=self._timeout): vol.All(
-                    vol.Coerce(float), vol.Range(min=1.0, max=30.0)
+                    vol.Coerce(float), vol.Range(min=5.0, max=30.0)
                 ),
                 vol.Optional("update_interval", default=self._update_interval): vol.All(
                     vol.Coerce(int), vol.Range(min=5, max=300)
                 ),
             }
+        )
+
+        # More helpful error descriptions
+        base_errors = {}
+        if errors:
+            base_errors["base"] = errors.get("base", "cannot_connect")
+            # Add more detailed hints based on error type could be expanded
+
+        return self.async_show_form(
+            step_id="user",
+            data_schema=data_schema,
+            errors=errors,
+            description_placeholders={
+                "default_port": "4101",
+                "default_interval": "10",
+                "timeout": "15",
+            },
         )
 
         return self.async_show_form(
