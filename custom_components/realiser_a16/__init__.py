@@ -217,7 +217,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Forward to platforms
     await hass.config_entries.async_forward_entry_setups(
-        entry, ["media_player", "sensor", "switch"]
+        entry, ["media_player", "sensor", "switch", "select"]
     )
 
     return True
@@ -225,7 +225,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    platforms = ["media_player", "sensor", "switch"]
+    platforms = ["media_player", "sensor", "switch", "select"]
     unload_ok = await hass.config_entries.async_unload_platforms(entry, platforms)
 
     if unload_ok and entry.entry_id in hass.data[DOMAIN]:
