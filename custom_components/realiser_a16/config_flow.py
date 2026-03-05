@@ -7,8 +7,7 @@ import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_PORT, CONF_TIMEOUT
-from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import FlowResult
+from homeassistant.core import HomeAssistant, FlowResult
 
 from .realiser_a16_hex import RealiserA16Hex
 
