@@ -41,7 +41,13 @@ tail -f home-assistant.log | grep -i realiser
 
 ### Single Test Simulation
 ```bash
-# Test TCP client directly
+# Test TCP client directly (from project root)
+python3 test_connection.py
+
+# Or use the simpler version with explicit path
+python3 test_connection_simple.py
+
+# Or import directly in Python
 python3 -c "
 from custom_components.realiser_a16.realiser_a16_hex import RealiserA16Hex
 with RealiserA16Hex('192.168.160.19', 4101) as amp:
@@ -49,6 +55,18 @@ with RealiserA16Hex('192.168.160.19', 4101) as amp:
     print('STATUS:', amp.get_status())
     print('PRESET A:', amp.get_preset_a()[:200])
 "
+```
+
+### Quick Commands (from project root)
+```bash
+# Run ruff linter
+ruff check custom_components/
+
+# Syntax check
+python3 -m py_compile custom_components/realiser_a16/*.py
+
+# Type check (optional)
+mypy custom_components/realiser_a16/ --ignore-missing-imports
 ```
 
 ## Code Style Guidelines
@@ -149,6 +167,10 @@ The coordinator data dict must contain:
 - Return: `resp.decode('ascii', errors='ignore')` (without null terminator)
 - Keep client stateless; connect per-session
 
+### Documentation References
+- **Device Commands**: See `commands.md` for complete list of IP commands (0x11-0xa0)
+- **HA Integration**: Follow Home Assistant integration guidelines
+
 ### Documentation
 - **Docstrings** for all public classes/functions (Google style):
   ```python
@@ -191,7 +213,8 @@ Before committing:
 - Default port: **4101** (configurable 512-65535)
 - Polling interval: **10 seconds** (configurable 5-300s)
 - Protocol: Hex commands + `\r\n`, responses null-terminated
-- Entities: 2x media_player, 2x sensor, 1x switch, 2x number (planned)
+- Entities: 2x media_player, 2x sensor, 1x switch, 1x select
+- Device Protocol: See `commands.md` for complete command list
 
 ## Gotchas
 - HACS requires `config_flow: true` in manifest

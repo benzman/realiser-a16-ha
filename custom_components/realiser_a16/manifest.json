@@ -2,10 +2,10 @@
   "domain": "realiser_a16",
   "name": "Realiser A16",
   "description": "Integration for Realiser A16 AV processor via TCP IP commands",
-  "documentation": "https://github.com/smyth-research/realiser-a16",
-  "codeowners": ["@smyth-research"],
+  "documentation": "https://github.com/benzman/realiser-a16-ha",
+  "codeowners": ["@benzman"],
   "requirements": [],
-  "version": "0.1.1",
-  "issue_tracker": "https://github.com/smyth-research/realiser-a16/issues",
+  "version": "0.1.3",
+  "issue_tracker": "https://github.com/benzman/realiser-a16-ha/issues",
   "config_flow": true
 }

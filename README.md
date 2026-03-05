@@ -89,7 +89,7 @@ After setup, the following entities are created:
 
 ## Protocol Documentation
 
-This integration uses the official Realiser A16 TCP IP Command Protocol described in the Smyth Research document "A16-IP-command-server-May-2020-1.pdf".
+This integration uses the official Realiser A16 TCP IP Command Protocol described in the documentation.
 
 - Commands are sent as 2-digit hexadecimal numbers followed by `\r\n`.
 - Responses are ASCII strings terminated with a null byte (`\x00`).
@@ -148,3 +148,4 @@ This integration is not officially supported by Smyth Research. Use at your own 
 
 - Protocol analysis based on Wireshark capture of Centro Control iOS app.
 - Official protocol documentation: "A16-IP-command-server-May-2020-1.pdf" by S. Smyth, Smyth Research.
+- Integration developed by benzman.
