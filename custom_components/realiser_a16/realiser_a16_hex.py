@@ -15,7 +15,7 @@ from typing import Union, Optional
 class RealiserA16Hex:
     """Simple TCP client for official A16 IP command protocol"""
 
-    # Command codes from commands.md
+    # Command codes from commands.md and legacy
     # Input selection
     CMD_SOURCE_EARC = 0x20
     CMD_SOURCE_HDMI1 = 0x21
@@ -33,10 +33,18 @@ class RealiserA16Hex:
     CMD_POWER_OFF = 0x2D
     CMD_POWER_STATUS = 0x2E
 
+    # Zone selection
+    CMD_ZONE_A = 0x06
+    CMD_ZONE_B = 0x07
+
     # Status queries
     CMD_GET_ASSIGNMENTS = 0x37
     CMD_RESET_LEVELS = 0x38
     CMD_GET_VERSION = 0x64
+
+    # Legacy STATUS command (not in commands.md but used in original code)
+    # Returns preset data when powered on
+    CMD_GET_STATUS = 0x45
 
     # Presets User A (0x70-0x77 = Preset 1-8)
     CMD_GET_PRESET_A = 0x46
@@ -136,6 +144,27 @@ class RealiserA16Hex:
     def get_power_status(self) -> str:
         return self.send(self.CMD_POWER_STATUS)
 
+    # Convenience methods - Zone selection
+    def select_zone_a(self) -> str:
+        return self.send(self.CMD_ZONE_A)
+
+    def select_zone_b(self) -> str:
+        return self.send(self.CMD_ZONE_B)
+
+    # Convenience methods - Status queries
+    def get_status(self) -> str:
+        """Get status (returns preset data when powered on)."""
+        return self.send(self.CMD_GET_STATUS)
+
+    def get_assignments(self) -> str:
+        return self.send(self.CMD_GET_ASSIGNMENTS)
+
+    def reset_levels(self) -> str:
+        return self.send(self.CMD_RESET_LEVELS)
+
+    def get_version(self) -> str:
+        return self.send(self.CMD_GET_VERSION)
+
     # Convenience methods - Input selection
     def select_source(self, source: str) -> str:
         """Select input source: earc, hdmi1-hdmi4, usb, line, stereo, coaxial, optical"""
@@ -155,16 +184,6 @@ class RealiserA16Hex:
             raise ValueError(f"Unknown source: {source}")
         return self.send(sources[source.lower()])
 
-    # Convenience methods - Status queries
-    def get_version(self) -> str:
-        return self.send(self.CMD_GET_VERSION)
-
-    def get_assignments(self) -> str:
-        return self.send(self.CMD_GET_ASSIGNMENTS)
-
-    def reset_levels(self) -> str:
-        return self.send(self.CMD_RESET_LEVELS)
-
     # Convenience methods - Presets
     def get_preset_a(self) -> str:
         return self.send(self.CMD_GET_PRESET_A)
@@ -176,13 +195,13 @@ class RealiserA16Hex:
         return self.send(self.CMD_GET_USER_B_INFO)
 
     def load_preset_a(self, preset_num: int) -> str:
-        """Load User A preset 1-8"""
+        """Load User A preset 1-8."""
         if not 1 <= preset_num <= 8:
             raise ValueError("Preset must be 1-8")
         return self.send(0x70 + preset_num - 1)
 
     def load_preset_b(self, preset_num: int) -> str:
-        """Load User B preset 8-16"""
+        """Load User B preset 8-16."""
         if not 8 <= preset_num <= 16:
             raise ValueError("Preset must be 8-16")
         return self.send(0x97 + preset_num - 8)

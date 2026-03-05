@@ -98,10 +98,10 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
             except Exception as err:
                 _LOGGER.warning("STATUS command failed: %s", err)
 
-            # POWER STATUS (0x2d returns PWR=STANDBY when in standby, preset data when on)
+            # POWER STATUS (0x2e returns PWR=STANDBY when in standby, preset data when on)
             try:
-                _LOGGER.debug("Sending command 0x2d (POWER STATUS)")
-                power_raw = self.send_command(0x2D)
+                _LOGGER.debug("Sending command 0x2e (POWER STATUS)")
+                power_raw = self.send_command(0x2E)
                 _LOGGER.debug("POWER response: %s", power_raw[:100])
                 # Parse power status into status dict
                 if "PWR=" in power_raw:
