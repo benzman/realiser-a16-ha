@@ -1,6 +1,7 @@
 """Config flow for Realiser A16 integration."""
 
 import logging
+import socket
 import voluptuous as vol
 
 from homeassistant import config_entries
@@ -34,12 +35,9 @@ class RealiserA16ConfigFlow(config_entries.ConfigFlow, domain="realiser_a16"):
             self._timeout = user_input.get(CONF_TIMEOUT, 5.0)
             self._update_interval = user_input.get("update_interval", 10)
 
-            # Test connection
+            # Test connection with retry logic
             try:
-                client = RealiserA16Hex(self._host, self._port, self._timeout)
-                await self.hass.async_add_executor_job(client.connect)
-                await self.hass.async_add_executor_job(client.send, 0x45)
-                client.close()
+                await self._test_connection()
 
                 await self.async_set_unique_id(f"{self._host}:{self._port}")
                 self._abort_if_unique_id_configured()
@@ -54,9 +52,18 @@ class RealiserA16ConfigFlow(config_entries.ConfigFlow, domain="realiser_a16"):
                     },
                 )
 
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.exception("Connection test failed")
+            except ConnectionRefusedError:
+                _LOGGER.error("Connection refused by device")
                 errors["base"] = "cannot_connect"
+            except socket.timeout:
+                _LOGGER.error("Connection timeout")
+                errors["base"] = "timeout"
+            except OSError as err:
+                _LOGGER.error("Network error: %s", err)
+                errors["base"] = "network_error"
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.exception("Unexpected error during connection test")
+                errors["base"] = "unknown"
 
         # Show form
         data_schema = vol.Schema(
@@ -83,3 +90,38 @@ class RealiserA16ConfigFlow(config_entries.ConfigFlow, domain="realiser_a16"):
                 "default_interval": "10",
             },
         )
+
+    async def _test_connection(self):
+        """Test connection to the A16 with multiple commands."""
+        client = None
+        try:
+            client = RealiserA16Hex(self._host, self._port, self._timeout)
+
+            # Connect (blocking, so use executor)
+            await self.hass.async_add_executor_job(client.connect)
+            _LOGGER.debug("TCP connection established to %s:%s", self._host, self._port)
+
+            # Try multiple commands to verify protocol
+            test_commands = [0x45, 0x37, 0x46]
+            for cmd in test_commands:
+                try:
+                    response = await self.hass.async_add_executor_job(client.send, cmd)
+                    if response:
+                        _LOGGER.debug(
+                            "Command 0x%02x successful: %s", cmd, response[:50]
+                        )
+                    else:
+                        _LOGGER.warning("Command 0x%02x returned empty response", cmd)
+                except Exception as err:
+                    _LOGGER.warning("Command 0x%02x failed: %s", cmd, err)
+                    # Don't raise yet - try next command
+
+            # Success if we got at least one response
+            return True
+
+        finally:
+            if client:
+                try:
+                    client.close()
+                except Exception:
+                    pass
