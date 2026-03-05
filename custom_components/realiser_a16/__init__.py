@@ -60,13 +60,15 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
         try:
             client = self._get_client()
             if not self._connected:
+                _LOGGER.debug(
+                    "Attempting TCP connection to %s:%s", self.host, self.port
+                )
                 client.connect()
                 self._connected = True
-                _LOGGER.debug(
-                    "Connected to Realiser A16 at %s:%s", self.host, self.port
-                )
+                _LOGGER.info("Connected to Realiser A16 at %s:%s", self.host, self.port)
         except Exception as err:
             self._connected = False
+            _LOGGER.error("Failed to connect to %s:%s: %s", self.host, self.port, err)
             raise UpdateFailed(f"Connection failed: {err}") from err
 
     def _fetch_data(self) -> Dict[str, Any]:
@@ -75,17 +77,49 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
             self._ensure_connected()
             client = self._get_client()
 
-            # Poll essential commands
-            # 0x45 = STATUS (quick ack)
-            # 0x37 = ASSIGNMENTS (speaker mapping)
-            # 0x46 = PRESET A (full data)
-            # 0x47 = PRESET B (full data)
-            status_raw = client.send(0x45)
-            assignments_raw = client.send(0x37)
-            preset_a_raw = client.send(0x46)
-            preset_b_raw = client.send(0x47)
+            # Poll essential commands with individual error handling
+            status_raw = ""
+            assignments_raw = ""
+            preset_a_raw = ""
+            preset_b_raw = ""
 
-            # Parse responses
+            # STATUS (quick ack)
+            try:
+                _LOGGER.debug("Sending command 0x45 (STATUS)")
+                status_raw = client.send(0x45)
+                _LOGGER.debug("STATUS response: %s", status_raw[:100])
+            except Exception as err:
+                _LOGGER.warning("STATUS command failed: %s", err)
+
+            # ASSIGNMENTS (speaker mapping)
+            try:
+                _LOGGER.debug("Sending command 0x37 (ASSIGNMENTS)")
+                assignments_raw = client.send(0x37)
+                _LOGGER.debug("ASSIGNMENTS response: %s", assignments_raw[:100])
+            except Exception as err:
+                _LOGGER.warning("ASSIGNMENTS command failed: %s", err)
+
+            # PRESET A (full data)
+            try:
+                _LOGGER.debug("Sending command 0x46 (PRESET A)")
+                preset_a_raw = client.send(0x46)
+                _LOGGER.debug(
+                    "PRESET A keys: %s", self._parse_preset(preset_a_raw).keys()
+                )
+            except Exception as err:
+                _LOGGER.warning("PRESET A command failed: %s", err)
+
+            # PRESET B (full data)
+            try:
+                _LOGGER.debug("Sending command 0x47 (PRESET B)")
+                preset_b_raw = client.send(0x47)
+                _LOGGER.debug(
+                    "PRESET B keys: %s", self._parse_preset(preset_b_raw).keys()
+                )
+            except Exception as err:
+                _LOGGER.warning("PRESET B command failed: %s", err)
+
+            # Parse responses (even if some commands failed)
             data = {
                 "connected": True,
                 "status": self._parse_key_value(status_raw),
@@ -97,6 +131,7 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
 
         except Exception as err:
             self._connected = False
+            _LOGGER.error("Failed to fetch data: %s", err, exc_info=True)
             raise UpdateFailed(f"Failed to fetch data: {err}") from err
 
     async def _async_update_data(self) -> Dict[str, Any]:
