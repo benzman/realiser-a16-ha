@@ -96,23 +96,33 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
                     isinstance(err, OSError) and not isinstance(err, TimeoutError)
                 )
 
+            def send_with_reconnect(code: int, current_raw: str) -> str:
+                """Send command, reconnect if needed."""
+                try:
+                    return client.send(code)
+                except Exception as err:
+                    if is_fatal_error(err):
+                        _LOGGER.warning("Connection lost, reconnecting...")
+                        self._connected = False
+                        self._ensure_connected()
+                        client = self._get_client()
+                        return client.send(code)
+                    raise
+
             # STATUS (quick ack)
             try:
                 _LOGGER.debug("Sending command 0x45 (STATUS)")
-                status_raw = client.send(0x45)
+                status_raw = send_with_reconnect(0x45, status_raw)
                 _LOGGER.debug("STATUS response: %s", status_raw[:100])
             except TimeoutError:
                 _LOGGER.warning("STATUS command timed out - will try other commands")
             except Exception as err:
                 _LOGGER.warning("STATUS command failed: %s", err)
-                if is_fatal_error(err):
-                    self._connected = False
-                    raise
 
             # POWER STATUS (0x2d returns PWR=STANDBY when in standby, preset data when on)
             try:
                 _LOGGER.debug("Sending command 0x2d (POWER STATUS)")
-                power_raw = client.send(0x2D)
+                power_raw = send_with_reconnect(0x2D, status_raw)
                 _LOGGER.debug("POWER response: %s", power_raw[:100])
                 # Parse power status into status dict
                 if "PWR=" in power_raw:
@@ -128,20 +138,17 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
             # ASSIGNMENTS (speaker mapping)
             try:
                 _LOGGER.debug("Sending command 0x37 (ASSIGNMENTS)")
-                assignments_raw = client.send(0x37)
+                assignments_raw = send_with_reconnect(0x37, status_raw)
                 _LOGGER.debug("ASSIGNMENTS response: %s", assignments_raw[:100])
             except TimeoutError:
                 _LOGGER.warning("ASSIGNMENTS command timed out")
             except Exception as err:
                 _LOGGER.warning("ASSIGNMENTS command failed: %s", err)
-                if is_fatal_error(err):
-                    self._connected = False
-                    raise
 
             # PRESET A (full data) - most important
             try:
                 _LOGGER.debug("Sending command 0x46 (PRESET A)")
-                preset_a_raw = client.send(0x46)
+                preset_a_raw = send_with_reconnect(0x46, status_raw)
                 _LOGGER.debug(
                     "PRESET A keys: %s", self._parse_preset(preset_a_raw).keys()
                 )
@@ -149,14 +156,11 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.warning("PRESET A command timed out")
             except Exception as err:
                 _LOGGER.warning("PRESET A command failed: %s", err)
-                if is_fatal_error(err):
-                    self._connected = False
-                    raise
 
             # PRESET B (full data)
             try:
                 _LOGGER.debug("Sending command 0x47 (PRESET B)")
-                preset_b_raw = client.send(0x47)
+                preset_b_raw = send_with_reconnect(0x47, status_raw)
                 _LOGGER.debug(
                     "PRESET B keys: %s", self._parse_preset(preset_b_raw).keys()
                 )
@@ -164,9 +168,6 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.warning("PRESET B command timed out")
             except Exception as err:
                 _LOGGER.warning("PRESET B command failed: %s", err)
-                if is_fatal_error(err):
-                    self._connected = False
-                    raise
 
             # Parse responses (even if some commands failed)
             data = {
