@@ -22,7 +22,7 @@ class RealiserA16ConfigFlow(config_entries.ConfigFlow, domain="realiser_a16"):
         """Initialize flow."""
         self._host = ""
         self._port = 4101
-        self._timeout = 5.0
+        self._timeout = 15.0  # Longer timeout for reliable connection
         self._update_interval = 10
 
     async def async_step_user(self, user_input=None):

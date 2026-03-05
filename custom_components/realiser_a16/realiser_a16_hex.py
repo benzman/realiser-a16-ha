@@ -48,7 +48,7 @@ class RealiserA16Hex:
     CMD_ZONE_A = 0x06
     CMD_ZONE_B = 0x07
 
-    def __init__(self, host: str, port: int = 4101, timeout: float = 5.0):
+    def __init__(self, host: str, port: int = 4101, timeout: float = 15.0):
         self.host = host
         self.port = port
         self.timeout = timeout
