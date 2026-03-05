@@ -88,10 +88,12 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
             preset_a_raw = ""
             preset_b_raw = ""
 
-            # Helper to detect fatal socket errors
+            # Helper to detect socket errors (but not timeouts - timeouts are acceptable)
             def is_fatal_error(err: Exception) -> bool:
-                return isinstance(
-                    err, (socket.error, BrokenPipeError, ConnectionResetError, OSError)
+                # BrokenPipe, ConnectionReset, etc. are fatal
+                # But TimeoutError we treat as "no response" - try other commands
+                return isinstance(err, (BrokenPipeError, ConnectionResetError)) or (
+                    isinstance(err, OSError) and not isinstance(err, TimeoutError)
                 )
 
             # STATUS (quick ack)
@@ -99,30 +101,36 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug("Sending command 0x45 (STATUS)")
                 status_raw = client.send(0x45)
                 _LOGGER.debug("STATUS response: %s", status_raw[:100])
+            except TimeoutError:
+                _LOGGER.warning("STATUS command timed out - will try other commands")
             except Exception as err:
                 _LOGGER.warning("STATUS command failed: %s", err)
                 if is_fatal_error(err):
                     self._connected = False
-                    raise  # Re-raise to abort polling
+                    raise
 
             # ASSIGNMENTS (speaker mapping)
             try:
                 _LOGGER.debug("Sending command 0x37 (ASSIGNMENTS)")
                 assignments_raw = client.send(0x37)
                 _LOGGER.debug("ASSIGNMENTS response: %s", assignments_raw[:100])
+            except TimeoutError:
+                _LOGGER.warning("ASSIGNMENTS command timed out")
             except Exception as err:
                 _LOGGER.warning("ASSIGNMENTS command failed: %s", err)
                 if is_fatal_error(err):
                     self._connected = False
                     raise
 
-            # PRESET A (full data)
+            # PRESET A (full data) - most important
             try:
                 _LOGGER.debug("Sending command 0x46 (PRESET A)")
                 preset_a_raw = client.send(0x46)
                 _LOGGER.debug(
                     "PRESET A keys: %s", self._parse_preset(preset_a_raw).keys()
                 )
+            except TimeoutError:
+                _LOGGER.warning("PRESET A command timed out")
             except Exception as err:
                 _LOGGER.warning("PRESET A command failed: %s", err)
                 if is_fatal_error(err):
@@ -136,6 +144,8 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug(
                     "PRESET B keys: %s", self._parse_preset(preset_b_raw).keys()
                 )
+            except TimeoutError:
+                _LOGGER.warning("PRESET B command timed out")
             except Exception as err:
                 _LOGGER.warning("PRESET B command failed: %s", err)
                 if is_fatal_error(err):
