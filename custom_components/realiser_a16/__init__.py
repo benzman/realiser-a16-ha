@@ -164,7 +164,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Realiser A16 from a config entry."""
     host = entry.data[CONF_HOST]
     port = entry.data.get(CONF_PORT, 4101)
-    timeout = entry.data.get(CONF_TIMEOUT, 5.0)
+    timeout = entry.data.get(CONF_TIMEOUT, 15.0)  # Increased default timeout
     update_interval = entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
 
     coordinator = RealiserA16DataUpdateCoordinator(
