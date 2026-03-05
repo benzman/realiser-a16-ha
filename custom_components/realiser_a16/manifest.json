@@ -7,5 +7,5 @@
   "requirements": [],
   "version": "0.1.0",
   "issue_tracker": "https://github.com/smyth-research/realiser-a16/issues",
-  "homeassistant": "2024.1.0"
+  "config_flow": true
 }
