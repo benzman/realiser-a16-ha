@@ -1,36 +1,32 @@
 """Config flow for Realiser A16 integration."""
 
 import logging
-from typing import Any, Dict, Optional
-
 import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_PORT, CONF_TIMEOUT
-from homeassistant.core import HomeAssistant, FlowResult
+from homeassistant.core import HomeAssistant
 
 from .realiser_a16_hex import RealiserA16Hex
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class RealiserA16ConfigFlow(config_entries.ConfigFlow):
+class RealiserA16ConfigFlow(config_entries.ConfigFlow, domain="realiser_a16"):
     """Handle a config flow for Realiser A16."""
 
     VERSION = 1
 
-    def __init__(self) -> None:
+    def __init__(self):
         """Initialize flow."""
-        self._host: str = ""
-        self._port: int = 4101
-        self._timeout: float = 5.0
-        self._update_interval: int = 10
+        self._host = ""
+        self._port = 4101
+        self._timeout = 5.0
+        self._update_interval = 10
 
-    async def async_step_user(
-        self, user_input: Optional[Dict[str, Any]] = None
-    ) -> FlowResult:
+    async def async_step_user(self, user_input=None):
         """Handle the initial step."""
-        errors: Dict[str, str] = {}
+        errors = {}
 
         if user_input is not None:
             self._host = user_input[CONF_HOST]
@@ -41,13 +37,10 @@ class RealiserA16ConfigFlow(config_entries.ConfigFlow):
             # Test connection
             try:
                 client = RealiserA16Hex(self._host, self._port, self._timeout)
-                # Run in executor to avoid blocking
                 await self.hass.async_add_executor_job(client.connect)
-                # Test with simple command
                 await self.hass.async_add_executor_job(client.send, 0x45)
                 client.close()
 
-                # Unique ID basierend auf IP+Port
                 await self.async_set_unique_id(f"{self._host}:{self._port}")
                 self._abort_if_unique_id_configured()
 
