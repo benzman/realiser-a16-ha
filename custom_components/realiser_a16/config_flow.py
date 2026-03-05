@@ -96,7 +96,7 @@ class RealiserA16ConfigFlow(config_entries.ConfigFlow, domain="realiser_a16"):
         client = None
         try:
             # Connect with longer timeout for initial handshake
-            client = RealiserA16Hex(self._host, self._port, timeout=10.0)
+            client = RealiserA16Hex(self._host, self._port, timeout=15.0)
             await self.hass.async_add_executor_job(client.connect)
             _LOGGER.debug("TCP connection established to %s:%s", self._host, self._port)
 
@@ -107,6 +107,7 @@ class RealiserA16ConfigFlow(config_entries.ConfigFlow, domain="realiser_a16"):
                 (0x37, "ASSIGNMENTS"),
                 (0x40, "VERSION"),
                 (0x41, "MODEL"),
+                (0x01, "POWER_ON"),  # Some devices only respond after power command
             ]
 
             for cmd, name in test_commands:
@@ -118,7 +119,7 @@ class RealiserA16ConfigFlow(config_entries.ConfigFlow, domain="realiser_a16"):
                             "Command 0x%02x (%s) successful: %s",
                             cmd,
                             name,
-                            response[:100],
+                            response[:200],
                         )
                         # We got a response - connection works!
                         return True
