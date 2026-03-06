@@ -42,6 +42,8 @@ async def async_setup_entry(
             RealiserA16InputSelect(coordinator, "A"),
             RealiserA16InputSelect(coordinator, "B"),
             RealiserA16ModeSelect(coordinator),
+            RealiserA16PresetSelect(coordinator, "A"),
+            RealiserA16PresetSelect(coordinator, "B"),
         ]
     )
 
@@ -181,6 +183,86 @@ class RealiserA16ModeSelect(SelectEntity):
         await self.coordinator.hass.async_add_executor_job(
             self.coordinator.send_command,
             RealiserA16Hex.CMD_ALL_TOGGLE,  # 0x1A
+        )
+        await self.coordinator.async_request_refresh()
+
+    async def async_added_to_hass(self) -> None:
+        """Register update listener."""
+        self.async_on_remove(
+            self.coordinator.async_add_listener(self.async_write_ha_state)
+        )
+
+
+class RealiserA16PresetSelect(SelectEntity):
+    """Select entity for loading User A or B presets (1–16)."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:music-box-multiple"
+    _attr_options = [f"Preset {n}" for n in range(1, 17)]
+
+    # Base command codes per zone
+    _PRESET_BASE = {"A": 0x70, "B": 0x90}
+    # Status key that carries the current preset number
+    _STATUS_KEY = {"A": "PA", "B": "PB"}
+
+    def __init__(
+        self, coordinator: RealiserA16DataUpdateCoordinator, zone: str
+    ) -> None:
+        """Initialize the preset select."""
+        self.coordinator = coordinator
+        self.zone = zone.upper()
+        self._attr_unique_id = f"{coordinator.host}_preset_{self.zone.lower()}"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, coordinator.host)},
+            "name": f"Realiser A16 ({coordinator.host})",
+            "manufacturer": "Smyth Research",
+            "model": "Realiser A16",
+        }
+
+    @property
+    def name(self) -> str:
+        """Return the name."""
+        return f"Preset {self.zone}"
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return self.coordinator.last_update_success
+
+    @property
+    def current_option(self) -> str | None:
+        """Return the currently loaded preset as 'Preset N'.
+
+        The coordinator status dict contains PA=01..16 (Zone A) or PB=01..16 (Zone B),
+        populated from the 0x80 / 0xA0 response.
+        """
+        if not self.coordinator.data:
+            return None
+        status = self.coordinator.data.get("status", {})
+        raw = status.get(self._STATUS_KEY[self.zone], "").strip()
+        try:
+            n = int(raw)
+            if 1 <= n <= 16:
+                return f"Preset {n}"
+        except (ValueError, TypeError):
+            pass
+        return None
+
+    async def async_select_option(self, option: str) -> None:
+        """Load the selected preset."""
+        try:
+            n = int(option.split()[-1])  # "Preset 3" → 3
+        except (ValueError, IndexError):
+            _LOGGER.warning("Invalid preset option: %s", option)
+            return
+        if not 1 <= n <= 16:
+            _LOGGER.warning("Preset number out of range: %d", n)
+            return
+
+        cmd = self._PRESET_BASE[self.zone] + (n - 1)
+        _LOGGER.debug("Loading preset %d for zone %s (cmd=0x%02x)", n, self.zone, cmd)
+        await self.coordinator.hass.async_add_executor_job(
+            self.coordinator.send_command, cmd
         )
         await self.coordinator.async_request_refresh()
 
