@@ -22,7 +22,7 @@ class RealiserA16ConfigFlow(config_entries.ConfigFlow, domain="realiser_a16"):
         """Initialize flow."""
         self._host = ""
         self._port = 4101
-        self._timeout = 30.0  # Longer timeout for reliable connection
+        self._timeout = 15.0  # Reduced timeout for faster connection testing
         self._update_interval = 10
 
     async def async_step_user(self, user_input=None):
@@ -62,7 +62,7 @@ class RealiserA16ConfigFlow(config_entries.ConfigFlow, domain="realiser_a16"):
                 _LOGGER.error("Network error: %s", err)
                 errors["base"] = "network_error"
             except Exception as err:  # noqa: BLE001
-                _LOGGER.exception("Unexpected error during connection test")
+                _LOGGER.error("Unexpected error during connection test: %s", err)
                 errors["base"] = "unknown"
 
         # Show form
@@ -81,12 +81,6 @@ class RealiserA16ConfigFlow(config_entries.ConfigFlow, domain="realiser_a16"):
             }
         )
 
-        # More helpful error descriptions
-        base_errors = {}
-        if errors:
-            base_errors["base"] = errors.get("base", "cannot_connect")
-            # Add more detailed hints based on error type could be expanded
-
         return self.async_show_form(
             step_id="user",
             data_schema=data_schema,
@@ -98,33 +92,21 @@ class RealiserA16ConfigFlow(config_entries.ConfigFlow, domain="realiser_a16"):
             },
         )
 
-        return self.async_show_form(
-            step_id="user",
-            data_schema=data_schema,
-            errors=errors,
-            description_placeholders={
-                "default_port": "4101",
-                "default_interval": "10",
-            },
-        )
-
     async def _test_connection(self):
         """Test connection to the A16 with retry and multiple commands."""
         client = None
         try:
-            # Connect with longer timeout for initial handshake
-            client = RealiserA16Hex(self._host, self._port, timeout=30.0)
+            # Connect with reasonable timeout for initial handshake
+            client = RealiserA16Hex(self._host, self._port, timeout=10.0)
             await self.hass.async_add_executor_job(client.connect)
             _LOGGER.debug("TCP connection established to %s:%s", self._host, self._port)
 
-            # Try different commands - some A16 firmware versions only respond to certain commands
-            # depending on state. Try STATUS first (quick), then ASSIGNMENTS, then VERSION.
+            # Test commands based on documented IP protocol
             test_commands = [
-                (0x45, "STATUS"),
-                (0x37, "ASSIGNMENTS"),
-                (0x40, "VERSION"),
-                (0x41, "MODEL"),
-                (0x01, "POWER_ON"),  # Some devices only respond after power command
+                (0x2E, "POWER_STATUS"),  # Returns PWR=ON or PWR=STANDBY when in standby
+                (0x45, "STATUS"),  # Returns preset data when powered on
+                (0x37, "ASSIGNMENTS"),  # Returns speaker assignments
+                (0x64, "VERSION"),  # Returns firmware version
             ]
 
             for cmd, name in test_commands:
@@ -157,7 +139,7 @@ class RealiserA16ConfigFlow(config_entries.ConfigFlow, domain="realiser_a16"):
             _LOGGER.warning(
                 "All test commands failed - device may not support TCP protocol"
             )
-            return False
+            raise Exception("No valid response from device")
 
         finally:
             if client:
