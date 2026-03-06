@@ -95,16 +95,18 @@ This integration uses the official Realiser A16 TCP IP Command Protocol describe
 - Responses are ASCII strings terminated with a null byte (`\x00`).
 
 Key commands:
-- `0x01`: Power ON
-- `0x00`: Power OFF
-- `0x03`: Volume UP
-- `0x04`: Volume DOWN
-- `0x45`: Get Status
+- `0x2C`: Power ON
+- `0x2D`: Power OFF
+- `0x2E`: Power Status (returns `PWR=ON` or `PWR=STANDBY`)
+- `0x20-0x29`: Input source selection (eARC, HDMI1-4, USB, LINE, STEREO, COAXIAL, OPTICAL)
 - `0x37`: Get Speaker Assignments
-- `0x46`: Get Preset A
-- `0x47`: Get Preset B
-- `0x56`: All Solo
-- `0x57`: All Mute
+- `0x46`: Get Preset A (full preset data)
+- `0x47`: Get Preset B (full preset data)
+- `0x70-0x77`: Load Preset A 1-8
+- `0x97-0x9F`: Load Preset B 8-16
+- `0x64`: Get Firmware Version
+
+*Note: The legacy `0x45` command returns preset data when the device is powered on.*
 
 ## Troubleshooting
 
@@ -146,6 +148,5 @@ This integration is not officially supported by Smyth Research. Use at your own 
 
 ## Credits
 
-- Protocol analysis based on Wireshark capture of Centro Control iOS app.
-- Official protocol documentation: "A16-IP-command-server-May-2020-1.pdf" by S. Smyth, Smyth Research.
+- Protocol documentation: "A16-IP-command-server-May-2020-1.pdf" by S. Smyth, Smyth Research.
 - Integration developed by benzman.
