@@ -28,7 +28,7 @@ class RealiserA16ConfigFlow(config_entries.ConfigFlow, domain="realiser_a16"):
         """Initialize flow."""
         self._host = ""
         self._port = 4101
-        self._timeout = 15.0
+        self._timeout = 30.0
         self._update_interval = 10
 
     async def async_step_user(self, user_input=None):
@@ -40,7 +40,7 @@ class RealiserA16ConfigFlow(config_entries.ConfigFlow, domain="realiser_a16"):
         if user_input is not None:
             self._host = user_input.get(CONF_HOST, "")
             self._port = user_input.get(CONF_PORT, 4101)
-            self._timeout = user_input.get(CONF_TIMEOUT, 10.0)
+            self._timeout = user_input.get(CONF_TIMEOUT, 30.0)
             self._update_interval = user_input.get("update_interval", 10)
 
             _LOGGER.info("Testing connection to %s:%s", self._host, self._port)

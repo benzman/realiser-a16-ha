@@ -8,8 +8,11 @@ Protokoll:
 - Receive: ASCII string + "\x00"
 """
 
+import logging
 import socket
 from typing import Union, Optional
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class RealiserA16Hex:
@@ -37,17 +40,31 @@ class RealiserA16Hex:
     CMD_ZONE_A = 0x06
     CMD_ZONE_B = 0x07
 
+    # Volume User A (Table 1: #41-42)
+    CMD_VOL_A_UP = 0x30  # A vol+  → VA=27-99
+    CMD_VOL_A_DN = 0x31  # A vol-  → VA=27-99
+    CMD_MUTE_A = 0x32  # Mute A  → MUTEA=MUTE or MUTEA=OFF
+    # Volume User B (Table 1: #43-46)
+    CMD_VOL_B_UP = 0x33  # B vol+  → VB=27-99
+    CMD_VOL_B_DN = 0x34  # B vol-  → VB=27-99
+    CMD_MUTE_B = 0x35  # Mute B  → MUTEB=MUTE or MUTEB=OFF
+
     # Status queries
     CMD_GET_ASSIGNMENTS = 0x37
     CMD_RESET_LEVELS = 0x38
     CMD_GET_VERSION = 0x64
 
-    # Legacy STATUS command (not in commands.md but used in original code)
-    # Returns preset data when powered on
-    CMD_GET_STATUS = 0x45
+    # User A info (Table 2: #57) - VA, AUR, IN, ASPKR, ...
+    CMD_USER_A_INFO = 0x80
+    # User A volume only (Table 2: #60) - VA=27-99
+    CMD_VOL_A_GET = 0x83
 
-    # Presets User A (0x70-0x77 = Preset 1-8)
-    CMD_GET_PRESET_A = 0x46
+    # User B info (Table 2: #89) - VB, BUR, ...
+    CMD_USER_B_INFO = 0xA0
+    # User B volume only (Table 2: #92) - VB=27-99
+    CMD_VOL_B_GET = 0xA3
+
+    # Presets User A (0x70-0x7f = Preset 1-16)
     CMD_LOAD_PRESET_A1 = 0x70
     CMD_LOAD_PRESET_A2 = 0x71
     CMD_LOAD_PRESET_A3 = 0x72
@@ -56,10 +73,23 @@ class RealiserA16Hex:
     CMD_LOAD_PRESET_A6 = 0x75
     CMD_LOAD_PRESET_A7 = 0x76
     CMD_LOAD_PRESET_A8 = 0x77
+    CMD_LOAD_PRESET_A9 = 0x78
+    CMD_LOAD_PRESET_A10 = 0x79
+    CMD_LOAD_PRESET_A11 = 0x7A
+    CMD_LOAD_PRESET_A12 = 0x7B
+    CMD_LOAD_PRESET_A13 = 0x7C
+    CMD_LOAD_PRESET_A14 = 0x7D
+    CMD_LOAD_PRESET_A15 = 0x7E
+    CMD_LOAD_PRESET_A16 = 0x7F
 
-    # Presets User B (0x97-0x9f = Preset 8-16)
-    CMD_GET_PRESET_B = 0x47
-    CMD_GET_USER_B_INFO = 0xA0
+    # Presets User B (0x90-0x9f = Preset 1-16)
+    CMD_LOAD_PRESET_B1 = 0x90
+    CMD_LOAD_PRESET_B2 = 0x91
+    CMD_LOAD_PRESET_B3 = 0x92
+    CMD_LOAD_PRESET_B4 = 0x93
+    CMD_LOAD_PRESET_B5 = 0x94
+    CMD_LOAD_PRESET_B6 = 0x95
+    CMD_LOAD_PRESET_B7 = 0x96
     CMD_LOAD_PRESET_B8 = 0x97
     CMD_LOAD_PRESET_B9 = 0x98
     CMD_LOAD_PRESET_B10 = 0x99
@@ -69,6 +99,10 @@ class RealiserA16Hex:
     CMD_LOAD_PRESET_B14 = 0x9D
     CMD_LOAD_PRESET_B15 = 0x9E
     CMD_LOAD_PRESET_B16 = 0x9F
+
+    # Volume range per PDF
+    VOLUME_MIN = 27
+    VOLUME_MAX = 99
 
     def __init__(self, host: str, port: int = 4101, timeout: float = 30.0):
         self.host = host
@@ -83,9 +117,16 @@ class RealiserA16Hex:
         self._sock.connect((self.host, self.port))
 
     def close(self) -> None:
-        """Close TCP connection"""
+        """Close TCP connection properly."""
         if self._sock:
-            self._sock.close()
+            try:
+                self._sock.shutdown(socket.SHUT_RDWR)
+            except Exception:
+                pass
+            try:
+                self._sock.close()
+            except Exception:
+                pass
             self._sock = None
 
     def __enter__(self):
@@ -108,7 +149,6 @@ class RealiserA16Hex:
         if not self._sock:
             raise RuntimeError("Not connected. Call connect() first.")
 
-        # Format: 2-digit hex + \r\n
         if isinstance(code, int):
             cmd = f"{code:02x}\r\n"
         else:
@@ -116,19 +156,21 @@ class RealiserA16Hex:
             if len(code) != 2:
                 raise ValueError("Hex code must be 2 digits")
 
-        self._sock.send(cmd.encode("ascii"))
+        _LOGGER.debug("Sending: %s", repr(cmd))
+        self._sock.sendall(cmd.encode("ascii"))
 
-        # Receive response (null-terminated)
         resp = b""
-        while True:
-            chunk = self._sock.recv(1024)
-            if not chunk:
-                break
-            resp += chunk
-            if resp.endswith(b"\x00"):
-                break
+        try:
+            while True:
+                chunk = self._sock.recv(4096)
+                if not chunk:
+                    break
+                resp += chunk
+                if b"\x00" in chunk:
+                    break
+        except socket.timeout:
+            _LOGGER.debug("Receive timeout after %d bytes", len(resp))
 
-        # Strip null terminator
         if resp.endswith(b"\x00"):
             resp = resp[:-1]
 

@@ -10,7 +10,6 @@ from homeassistant.components.media_player import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import RealiserA16DataUpdateCoordinator, DOMAIN
@@ -18,51 +17,55 @@ from .realiser_a16_hex import RealiserA16Hex
 
 _LOGGER = logging.getLogger(__name__)
 
+VOLUME_MIN = RealiserA16Hex.VOLUME_MIN  # 27
+VOLUME_MAX = RealiserA16Hex.VOLUME_MAX  # 99
+
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up media player entities."""
     coordinator: RealiserA16DataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
-
-    # Create two zone players: A and B
     async_add_entities(
         [
-            RealiserA16Zone(coordinator, "A", "Zone A"),
-            RealiserA16Zone(coordinator, "B", "Zone B"),
+            RealiserA16Zone(coordinator, "A"),
+            RealiserA16Zone(coordinator, "B"),
         ]
     )
 
 
 class RealiserA16Zone(MediaPlayerEntity):
-    """Representation of a Realiser A16 zone."""
+    """Media player entity for a Realiser A16 user zone."""
 
     _attr_has_entity_name = True
-    _attr_name = None  # Use entity name from device
+    _attr_name = None
     _attr_icon = "mdi:amplifier"
+    _attr_supported_features = (
+        MediaPlayerEntityFeature.VOLUME_STEP
+        | MediaPlayerEntityFeature.VOLUME_MUTE
+        | MediaPlayerEntityFeature.SELECT_SOURCE
+        | MediaPlayerEntityFeature.TURN_ON
+        | MediaPlayerEntityFeature.TURN_OFF
+    )
 
     def __init__(
-        self, coordinator: RealiserA16DataUpdateCoordinator, zone: str, name: str
+        self, coordinator: RealiserA16DataUpdateCoordinator, zone: str
     ) -> None:
         """Initialize the media player."""
         self.coordinator = coordinator
         self.zone = zone.upper()
-        self._attr_unique_id = f"{coordinator.host}_{self.zone.lower()}"
+        self._attr_unique_id = f"{coordinator.host}_zone_{self.zone.lower()}"
         self._attr_device_info = {
             "identifiers": {(DOMAIN, coordinator.host)},
             "name": f"Realiser A16 ({coordinator.host})",
             "manufacturer": "Smyth Research",
             "model": "Realiser A16",
         }
-        # Supported features: volume step, mute, select source, select sound mode, turn on/off
-        self._attr_supported_features = (
-            MediaPlayerEntityFeature.VOLUME_STEP
-            | MediaPlayerEntityFeature.VOLUME_MUTE
-            | MediaPlayerEntityFeature.SELECT_SOURCE
-            | MediaPlayerEntityFeature.SELECT_SOUND_MODE
-            | MediaPlayerEntityFeature.TURN_ON
-            | MediaPlayerEntityFeature.TURN_OFF
-        )
+
+    @property
+    def name(self) -> str:
+        """Return the name."""
+        return f"Zone {self.zone}"
 
     @property
     def available(self) -> bool:
@@ -70,155 +73,138 @@ class RealiserA16Zone(MediaPlayerEntity):
         return self.coordinator.last_update_success
 
     @property
-    def _preset_data(self) -> Dict[str, str]:
-        """Get preset data for this zone."""
-        if self.zone == "A":
-            return self.coordinator.data.get("preset_a", {})
-        else:
-            return self.coordinator.data.get("preset_b", {})
+    def _status(self) -> Dict[str, str]:
+        """Shortcut to coordinator status dict."""
+        if self.coordinator.data:
+            return self.coordinator.data.get("status", {})
+        return {}
 
     @property
     def state(self) -> MediaPlayerState:
-        """Return the state of the media player."""
-        preset = self._preset_data
-        pwr = preset.get("PWR") or (
-            preset.get("PA") and "ON"
-        )  # PA indicates power for zone?
-        # If PWR is OFF, return off; else on
-        # Some preset data may have PA=01 for zone A power? Not sure.
-        # Use global PWR from assignments if present? For simplicity, assume always ON if device is on.
-        # Better: check if PWR key exists in any preset, treat as "ON"
-        if pwr is None:
-            # Fallback: if VA exists, assume on?
+        """Return the state based on PWR key."""
+        pwr = self._status.get("PWR", "").upper()
+        if pwr in ("STANDBY", "OFF", "BOOT"):
             return MediaPlayerState.OFF
-        if pwr.upper() == "OFF":
-            return MediaPlayerState.OFF
-        return MediaPlayerState.ON
+        if pwr == "ON":
+            return MediaPlayerState.ON
+        # Fallback: if VA exists, device is on
+        if self._status.get("VA"):
+            return MediaPlayerState.ON
+        return MediaPlayerState.OFF
 
     @property
     def volume_level(self) -> Optional[float]:
-        """Volume level of the media player (0.0 to 1.0)."""
-        preset = self._preset_data
+        """Return volume mapped from 27-99 to 0.0-1.0."""
         vol_key = "VA" if self.zone == "A" else "VB"
-        vol_str = preset.get(vol_key, "0")
+        val = self._status.get(vol_key)
+        if val is None:
+            return None
         try:
-            vol = int(vol_str)
-            # Assumption: volume range 0-100. Convert to 0.0-1.0
-            return max(0.0, min(1.0, vol / 100.0))
+            vol = int(val)
+            return max(0.0, min(1.0, (vol - VOLUME_MIN) / (VOLUME_MAX - VOLUME_MIN)))
         except (ValueError, TypeError):
             return None
 
     @property
     def is_volume_muted(self) -> bool:
-        """Boolean if volume is currently muted."""
-        preset = self._preset_data
-        mute_key = "ATACT" if self.zone == "A" else "BTACT"
-        mute_val = preset.get(mute_key, "").upper()
-        # Typically: ON = not muted, OFF = muted? Or reversed.
-        # From dump: ATACT=ON while volume=62. Likely ON = active (tone control?) but not mute.
-        # There are separate MUTE commands (0x02, 0x52, 0x53). ATACT/BTACT might be "Anthem Act" or something else.
-        # Testing needed. For now, treat OFF as muted.
-        return mute_val == "OFF"
+        """Return mute state from MUTEA/MUTEB key."""
+        mute_key = "MUTEA" if self.zone == "A" else "MUTEB"
+        return self._status.get(mute_key, "").upper() == "MUTE"
 
     @property
     def source(self) -> Optional[str]:
-        """Return the current input source."""
-        preset = self._preset_data
-        src_key = "IN" if self.zone == "A" else "BUR"
-        src = preset.get(src_key)
-        if src:
-            return src.strip()
+        """Return the current input source (Zone A only via IN=)."""
+        if self.zone == "A":
+            return self._status.get("IN", "").strip() or None
         return None
 
     @property
     def source_list(self) -> list[str]:
-        """List of available input sources."""
-        # Could be derived from other data or hard-coded common names
-        # Not available from A16 protocol, so return empty list
-        # Possibly we could get from some other command? Unknown.
-        return ["HDMI-1", "HDMI-2", "HDMI-3", "HDMI-4", "Optical", "Coaxial", "AAnalog"]
-
-    @property
-    def sound_mode(self) -> Optional[str]:
-        """Return the current sound mode."""
-        preset = self._preset_data
-        # UMIX is used for AuroMatic etc.
-        mode = preset.get("UMIX") or preset.get("BUMIX") or preset.get("MODE")
-        if mode:
-            return mode.strip()
-        return None
-
-    @property
-    def sound_mode_list(self) -> list[str]:
-        """List of available sound modes."""
-        # Typical modes: SVS (Virtual Surround), AuroMatic, Stereo, etc.
-        # Not known exactly, return generic
-        return ["SVS", "AuroMatic", "Stereo", "Surround"]
+        """Return list of available input sources."""
+        return [
+            "eARC",
+            "HDMI-1",
+            "HDMI-2",
+            "HDMI-3",
+            "HDMI-4",
+            "USB",
+            "LINE",
+            "STEREO",
+            "COAXIAL",
+            "OPTICAL",
+        ]
 
     @property
     def media_title(self) -> Optional[str]:
-        """Return the current media title (preset name)."""
-        preset = self._preset_data
-        name_key = "AQNAME" if self.zone == "A" else "BQNAME"
-        name = preset.get(name_key)
-        if name:
-            return name.strip()
-        return None
+        """Return current preset/headphone name."""
+        key = "AQNAME" if self.zone == "A" else "BQNAME"
+        return self._status.get(key, "").strip() or None
 
     async def async_turn_on(self) -> None:
-        """Turn the media player on."""
+        """Turn the device on."""
         await self.hass.async_add_executor_job(
             self.coordinator.send_command, RealiserA16Hex.CMD_POWER_ON
         )
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self) -> None:
-        """Turn the media player off."""
+        """Put the device into standby."""
         await self.hass.async_add_executor_job(
             self.coordinator.send_command, RealiserA16Hex.CMD_POWER_OFF
         )
         await self.coordinator.async_request_refresh()
 
     async def async_volume_up(self) -> None:
-        """Volume up."""
-        await self.hass.async_add_executor_job(
-            self.coordinator.send_command,
-            RealiserA16Hex.CMD_VOL_UP
+        """Increase volume by one step."""
+        cmd = (
+            RealiserA16Hex.CMD_VOL_A_UP
             if self.zone == "A"
-            else RealiserA16Hex.CMD_VOL_DN,
+            else RealiserA16Hex.CMD_VOL_B_UP
         )
+        await self.hass.async_add_executor_job(self.coordinator.send_command, cmd)
         await self.coordinator.async_request_refresh()
 
     async def async_volume_down(self) -> None:
-        """Volume down."""
-        await self.hass.async_add_executor_job(
-            self.coordinator.send_command,
-            RealiserA16Hex.CMD_VOL_DN
+        """Decrease volume by one step."""
+        cmd = (
+            RealiserA16Hex.CMD_VOL_A_DN
             if self.zone == "A"
-            else RealiserA16Hex.CMD_VOL_UP,
+            else RealiserA16Hex.CMD_VOL_B_DN
         )
+        await self.hass.async_add_executor_job(self.coordinator.send_command, cmd)
         await self.coordinator.async_request_refresh()
 
     async def async_mute_volume(self, mute: bool) -> None:
-        """Mute or unmute volume."""
-        if self.zone == "A":
-            cmd = RealiserA16Hex.CMD_MUTE_A
-        else:
-            cmd = RealiserA16Hex.CMD_MUTE_B
+        """Mute/unmute (toggle - the A16 toggles on each MUTE command)."""
+        cmd = (
+            RealiserA16Hex.CMD_MUTE_A if self.zone == "A" else RealiserA16Hex.CMD_MUTE_B
+        )
         await self.hass.async_add_executor_job(self.coordinator.send_command, cmd)
         await self.coordinator.async_request_refresh()
 
     async def async_select_source(self, source: str) -> None:
         """Select input source."""
-        # There is no direct set source via hex? Possibly we need to navigate with IR input next commands.
-        # The preset data includes "IN" but to change source we may need to send IR commands for input selection.
-        # There are 50 IR commands mimicking remote keys. One of them is Input Next, etc.
-        # But we don't have mapping. For now, this is not implemented.
-        _LOGGER.warning("Source selection not implemented for Realiser A16")
+        source_map = {
+            "eARC": RealiserA16Hex.CMD_SOURCE_EARC,
+            "HDMI-1": RealiserA16Hex.CMD_SOURCE_HDMI1,
+            "HDMI-2": RealiserA16Hex.CMD_SOURCE_HDMI2,
+            "HDMI-3": RealiserA16Hex.CMD_SOURCE_HDMI3,
+            "HDMI-4": RealiserA16Hex.CMD_SOURCE_HDMI4,
+            "USB": RealiserA16Hex.CMD_SOURCE_USB,
+            "LINE": RealiserA16Hex.CMD_SOURCE_LINE,
+            "STEREO": RealiserA16Hex.CMD_SOURCE_STEREO,
+            "COAXIAL": RealiserA16Hex.CMD_SOURCE_COAXIAL,
+            "OPTICAL": RealiserA16Hex.CMD_SOURCE_OPTICAL,
+        }
+        cmd = source_map.get(source)
+        if cmd is None:
+            _LOGGER.warning("Unknown source: %s", source)
+            return
+        await self.hass.async_add_executor_job(self.coordinator.send_command, cmd)
+        await self.coordinator.async_request_refresh()
 
-    async def async_select_sound_mode(self, sound_mode: str) -> None:
-        """Select sound mode."""
-        # Not implemented: need IR command or specific command
-        _LOGGER.warning("Sound mode selection not implemented for Realiser A16")
-
-    # The turn_on/off and volume methods are enough for basic control.
+    async def async_added_to_hass(self) -> None:
+        """Register update listener."""
+        self.async_on_remove(
+            self.coordinator.async_add_listener(self.async_write_ha_state)
+        )

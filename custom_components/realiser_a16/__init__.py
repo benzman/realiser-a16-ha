@@ -3,10 +3,9 @@
 import asyncio
 import logging
 import socket
+import time
 from datetime import timedelta
 from typing import Any, Dict, Optional
-
-import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT, CONF_TIMEOUT
@@ -19,29 +18,31 @@ _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "realiser_a16"
 CONF_UPDATE_INTERVAL = "update_interval"
-
-# Default polling interval in seconds
 DEFAULT_UPDATE_INTERVAL = 10
 
 
 class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
-    """Coordinator to fetch data from Realiser A16."""
+    """Coordinator to fetch data from Realiser A16.
+
+    Uses a persistent TCP connection. The A16 supports only one connection
+    at a time and closes it after an inactivity timeout (30-250 seconds).
+    We reconnect automatically when needed.
+    """
 
     def __init__(
         self,
         hass: HomeAssistant,
         host: str,
         port: int = 4101,
-        timeout: float = 5.0,
+        timeout: float = 10.0,
         update_interval: int = DEFAULT_UPDATE_INTERVAL,
     ) -> None:
         """Initialize the coordinator."""
         self.host = host
         self.port = port
         self.timeout = timeout
-        self.client: Optional[RealiserA16Hex] = None
+        self._client: Optional[RealiserA16Hex] = None
         self._lock = asyncio.Lock()
-        self._connected = False
 
         super().__init__(
             hass,
@@ -50,147 +51,102 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(seconds=update_interval),
         )
 
-    def _get_client(self) -> RealiserA16Hex:
-        """Get or create client."""
-        if self.client is None:
-            self.client = RealiserA16Hex(self.host, self.port, self.timeout)
-        return self.client
+    def _connect(self) -> None:
+        """Open a fresh TCP connection to the A16."""
+        self._disconnect()
+        _LOGGER.debug("Connecting to %s:%s", self.host, self.port)
+        self._client = RealiserA16Hex(self.host, self.port, timeout=self.timeout)
+        self._client.connect()
+        _LOGGER.info("Connected to Realiser A16 at %s:%s", self.host, self.port)
 
-    def _ensure_connected(self) -> None:
-        """Ensure TCP connection is established."""
+    def _disconnect(self) -> None:
+        """Close TCP connection cleanly."""
+        if self._client is not None:
+            try:
+                self._client.close()
+            except Exception:
+                pass
+            self._client = None
+
+    def _send(self, code: int) -> str:
+        """Send command, reconnecting once on failure."""
+        if self._client is None:
+            self._connect()
         try:
-            client = self._get_client()
-            if not self._connected:
-                _LOGGER.debug(
-                    "Attempting TCP connection to %s:%s", self.host, self.port
-                )
-                client.connect()
-                self._connected = True
-                _LOGGER.info("Connected to Realiser A16 at %s:%s", self.host, self.port)
-                # Wir warten kurz nach connect, damit der A16 bereit ist
-                import time
-
-                time.sleep(0.2)
-        except Exception as err:
-            self._connected = False
-            _LOGGER.exception("Failed to connect to %s:%s", self.host, self.port)
-            raise UpdateFailed(f"Connection failed: {err}") from err
+            return self._client.send(code)  # type: ignore[union-attr]
+        except (OSError, socket.error) as err:
+            _LOGGER.warning("Send 0x%02x failed (%s), reconnecting...", code, err)
+            self._disconnect()
+            self._connect()
+            return self._client.send(code)  # type: ignore[union-attr]
 
     def _fetch_data(self) -> Dict[str, Any]:
-        """Fetch actual data from device."""
+        """Fetch data from device using a persistent connection."""
         try:
-            # Ensure connection first (reconnects if needed)
-            self._ensure_connected()
+            # User A info (0x80): VA, AUR, IN, ASPKR, ...
+            raw_a = self._send(0x80)
+            _LOGGER.debug("0x80 User A info: %s", raw_a[:120])
 
-            # Poll essential commands with individual error handling
-            status_raw = ""
-            assignments_raw = ""
-            preset_a_raw = ""
-            preset_b_raw = ""
+            # User B info (0xA0): VB, BUR, ...
+            raw_b = self._send(0xA0)
+            _LOGGER.debug("0xa0 User B info: %s", raw_b[:120])
 
-            # STATUS (quick ack)
-            try:
-                _LOGGER.debug("Sending command 0x45 (STATUS)")
-                status_raw = self.send_command(0x45)
-                _LOGGER.debug("STATUS response: %s", status_raw[:100])
-            except TimeoutError:
-                _LOGGER.warning("STATUS command timed out - will try other commands")
-            except Exception as err:
-                _LOGGER.warning("STATUS command failed: %s", err)
+            # Power status (0x2e)
+            raw_pwr = self._send(0x2E)
+            _LOGGER.debug("0x2e Power status: %s", raw_pwr[:60])
 
-            # POWER STATUS (0x2e returns PWR=STANDBY when in standby, preset data when on)
-            try:
-                _LOGGER.debug("Sending command 0x2e (POWER STATUS)")
-                power_raw = self.send_command(0x2E)
-                _LOGGER.debug("POWER response: %s", power_raw[:100])
-                # Parse power status into status dict
-                if "PWR=" in power_raw:
-                    for token in power_raw.split("\x00"):
-                        if "=" in token:
-                            k, v = token.split("=", 1)
-                            status_raw += f"\x00{k}={v}"
-            except TimeoutError:
-                _LOGGER.warning("POWER STATUS command timed out")
-            except Exception as err:
-                _LOGGER.warning("POWER STATUS command failed: %s", err)
+            # Speaker assignments (0x37)
+            raw_assign = self._send(0x37)
+            _LOGGER.debug("0x37 Assignments: %s", raw_assign[:60])
 
-            # ASSIGNMENTS (speaker mapping)
-            try:
-                _LOGGER.debug("Sending command 0x37 (ASSIGNMENTS)")
-                assignments_raw = self.send_command(0x37)
-                _LOGGER.debug("ASSIGNMENTS response: %s", assignments_raw[:100])
-            except TimeoutError:
-                _LOGGER.warning("ASSIGNMENTS command timed out")
-            except Exception as err:
-                _LOGGER.warning("ASSIGNMENTS command failed: %s", err)
+            status = self._parse_kv(raw_a)
+            status.update(self._parse_kv(raw_b))  # VB, BUR, etc.
+            status.update(self._parse_kv(raw_pwr))  # PWR
 
-            # PRESET A (full data) - most important
-            try:
-                _LOGGER.debug("Sending command 0x46 (PRESET A)")
-                preset_a_raw = self.send_command(0x46)
-                _LOGGER.debug(
-                    "PRESET A keys: %s", self._parse_preset(preset_a_raw).keys()
-                )
-            except TimeoutError:
-                _LOGGER.warning("PRESET A command timed out")
-            except Exception as err:
-                _LOGGER.warning("PRESET A command failed: %s", err)
-
-            # PRESET B (full data)
-            try:
-                _LOGGER.debug("Sending command 0x47 (PRESET B)")
-                preset_b_raw = self.send_command(0x47)
-                _LOGGER.debug(
-                    "PRESET B keys: %s", self._parse_preset(preset_b_raw).keys()
-                )
-            except TimeoutError:
-                _LOGGER.warning("PRESET B command timed out")
-            except Exception as err:
-                _LOGGER.warning("PRESET B command failed: %s", err)
-
-            # Parse responses (even if some commands failed)
-            data = {
+            return {
                 "connected": True,
-                "status": self._parse_key_value(status_raw),
-                "assignments": self._parse_assignments(assignments_raw),
-                "preset_a": self._parse_preset(preset_a_raw),
-                "preset_b": self._parse_preset(preset_b_raw),
+                "status": status,
+                "assignments": self._parse_assignments(raw_assign),
             }
-            return data
 
         except Exception as err:
-            self._connected = False
+            self._disconnect()
             _LOGGER.error("Failed to fetch data: %s", err, exc_info=True)
             raise UpdateFailed(f"Failed to fetch data: {err}") from err
 
     async def _async_update_data(self) -> Dict[str, Any]:
-        """Update data async with lock to prevent concurrent requests."""
+        """Async update with lock."""
         async with self._lock:
             return await self.hass.async_add_executor_job(self._fetch_data)
 
-    def _parse_key_value(self, raw: str) -> Dict[str, str]:
-        """Parse KEY=VALUE null-terminated strings."""
-        result = {}
+    def send_command(self, code: int) -> str:
+        """Send a raw command (called from platforms via executor)."""
+        return self._send(code)
+
+    # --- Parsers ---
+
+    def _parse_kv(self, raw: str) -> Dict[str, str]:
+        """Parse null-separated KEY=VALUE pairs."""
+        result: Dict[str, str] = {}
         if not raw:
             return result
-        tokens = raw.split("\x00")
-        for token in tokens:
+        for token in raw.replace("\r", "").split("\x00"):
+            token = token.strip()
             if "=" in token:
                 k, v = token.split("=", 1)
                 result[k.strip()] = v.strip()
         return result
 
     def _parse_assignments(self, raw: str) -> Dict[str, Any]:
-        """Parse assignments response (ACH/BCH tokens)."""
+        """Parse ACH/BCH assignment tokens."""
         result: Dict[str, Any] = {"global": {}, "ach": {}, "bch": {}}
         if not raw:
             return result
-
-        tokens = raw.split("\x00")
-        for token in tokens:
+        for token in raw.replace("\r", "").split("\x00"):
+            token = token.strip()
             if "=" in token:
                 k, v = token.split("=", 1)
-                result["global"][k] = v
+                result["global"][k.strip()] = v.strip()
             elif token.startswith("A") and len(token) >= 3:
                 try:
                     idx = int(token[1:3])
@@ -205,68 +161,24 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
                     pass
         return result
 
-    def _parse_preset(self, raw: str) -> Dict[str, str]:
-        """Parse full preset data (AUR, PA, VA, etc.)."""
-        result = {}
-        if not raw:
-            return result
-        tokens = raw.split("\x00")
-        for token in tokens:
-            if "=" in token:
-                k, v = token.split("=", 1)
-                result[k.strip()] = v.strip()
-        return result
-
-    def send_command(self, code: int) -> str:
-        """Send raw command synchronously with auto-reconnect on connection failure."""
-        if not self._connected:
-            self._ensure_connected()
-
-        try:
-            return self._get_client().send(code)
-        except (socket.error, BrokenPipeError, ConnectionResetError, OSError) as err:
-            _LOGGER.warning(
-                "Connection lost during send (0x%02x): %s. Reconnecting...", code, err
-            )
-            # Mark connection as dead
-            self._connected = False
-            # Close and discard old client
-            try:
-                if self.client:
-                    self.client.close()
-            except Exception:
-                pass
-            self.client = None
-            # Reconnect and retry once
-            try:
-                self._ensure_connected()
-                return self._get_client().send(code)
-            except Exception as retry_err:
-                _LOGGER.error("Retry after reconnect failed: %s", retry_err)
-                raise UpdateFailed(
-                    f"Command failed after reconnect: {retry_err}"
-                ) from retry_err
-
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Realiser A16 from a config entry."""
     host = entry.data[CONF_HOST]
     port = entry.data.get(CONF_PORT, 4101)
-    timeout = entry.data.get(CONF_TIMEOUT, 15.0)  # Increased default timeout
+    timeout = entry.data.get(CONF_TIMEOUT, 10.0)
     update_interval = entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
 
     coordinator = RealiserA16DataUpdateCoordinator(
         hass, host, port, timeout, update_interval
     )
 
-    # Initial refresh
     await coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
 
-    # Forward to platforms
     await hass.config_entries.async_forward_entry_setups(
-        entry, ["media_player", "sensor", "switch", "select"]
+        entry, ["media_player", "sensor", "switch", "select", "button"]
     )
 
     return True
@@ -274,15 +186,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    platforms = ["media_player", "sensor", "switch", "select"]
+    platforms = ["media_player", "sensor", "switch", "select", "button"]
     unload_ok = await hass.config_entries.async_unload_platforms(entry, platforms)
 
-    if unload_ok and entry.entry_id in hass.data[DOMAIN]:
+    if unload_ok and entry.entry_id in hass.data.get(DOMAIN, {}):
         coordinator: RealiserA16DataUpdateCoordinator = hass.data[DOMAIN][
             entry.entry_id
         ]
-        if coordinator.client:
-            coordinator.client.close()
+        coordinator._disconnect()
         hass.data[DOMAIN].pop(entry.entry_id)
 
     return unload_ok
