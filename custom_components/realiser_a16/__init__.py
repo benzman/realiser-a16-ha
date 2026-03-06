@@ -3,7 +3,6 @@
 import asyncio
 import logging
 import socket
-import time
 from datetime import timedelta
 from typing import Any, Dict, Optional
 
@@ -100,20 +99,29 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
             raw_assign = self._send(0x37)
             _LOGGER.debug("0x37 Assignments: %s", raw_assign[:60])
 
+            # Speaker visibility (0xAE) + active status (0xAF) — always poll
+            raw_vis = self._send(0xAE)
+            _LOGGER.debug("0xae Speaker visibility: %s", raw_vis[:120])
+            raw_act = self._send(0xAF)
+            _LOGGER.debug("0xaf Speaker status: %s", raw_act[:120])
+
             status = self._parse_kv(raw_a)
             status.update(self._parse_kv(raw_b))  # VB, BUR, etc.
             status.update(self._parse_kv(raw_pwr))  # PWR
-
-            # Keep existing speakers data if already fetched, don't poll on every update
-            existing_speakers = {}
-            if self.data:
-                existing_speakers = self.data.get("speakers", {})
 
             return {
                 "connected": True,
                 "status": status,
                 "assignments": self._parse_assignments(raw_assign),
-                "speakers": existing_speakers,
+                "speakers": self._parse_speakers(raw_vis, raw_act),
+                "raw": {
+                    "0x80": raw_a,
+                    "0xa0": raw_b,
+                    "0x2e": raw_pwr,
+                    "0x37": raw_assign,
+                    "0xae": raw_vis,
+                    "0xaf": raw_act,
+                },
             }
 
         except Exception as err:
@@ -261,7 +269,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
 
     await hass.config_entries.async_forward_entry_setups(
-        entry, ["media_player", "sensor", "switch", "select", "button"]
+        entry, ["media_player", "sensor", "switch", "select"]
     )
 
     return True
@@ -269,7 +277,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    platforms = ["media_player", "sensor", "switch", "select", "button"]
+    platforms = ["media_player", "sensor", "switch", "select"]
     unload_ok = await hass.config_entries.async_unload_platforms(entry, platforms)
 
     if unload_ok and entry.entry_id in hass.data.get(DOMAIN, {}):

@@ -5,7 +5,6 @@ from typing import Any, Dict, Optional
 
 from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import SIGNAL_STRENGTH_DECIBELS
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -19,6 +18,54 @@ _LOGGER = logging.getLogger(__name__)
 VOLUME_MIN = RealiserA16Hex.VOLUME_MIN  # 27
 VOLUME_MAX = RealiserA16Hex.VOLUME_MAX  # 99
 
+# Raw response sensors: (label, data["raw"] key)
+_RAW_SENSORS = [
+    ("Raw 0x80 User A", "0x80"),
+    ("Raw 0xA0 User B", "0xa0"),
+    ("Raw 0x2E Power", "0x2e"),
+    ("Raw 0x37 Assignments", "0x37"),
+    ("Raw 0xAE Spk Visibility", "0xae"),
+    ("Raw 0xAF Spk Status", "0xaf"),
+]
+
+# User A status key sensors: (label, status dict key)
+_USER_A_SENSORS = [
+    ("User A Name", "AUR"),
+    ("User A Preset", "PA"),
+    ("User A Volume", "VA"),
+    ("User A Tri-Level", "TRI"),
+    ("User A Room", "AROOM"),
+    ("User A Subject", "ANAME"),
+    ("User A Speaker Config", "ASPKR"),
+    ("User A HPEQ File", "AQFILE"),
+    ("User A HPEQ Subject", "AQNAME"),
+    ("User A HPEQ Type", "AQTYPE"),
+    ("User A HPEQ Model", "AQMOD"),
+    ("User A Tactile", "ATACT"),
+    ("User A Input", "IN"),
+    ("User A Decoder", "DEC"),
+    ("User A Listen Mode", "LM"),
+    ("User A Upmix", "UMIX"),
+    ("User A HT Mode", "HTMODE"),
+    ("User A Legacy", "LEG"),
+    ("User A User Mode", "USER"),
+]
+
+# User B status key sensors: (label, status dict key)
+_USER_B_SENSORS = [
+    ("User B Name", "BUR"),
+    ("User B Preset", "PB"),
+    ("User B Volume", "VB"),
+    ("User B Room", "BROOM"),
+    ("User B Subject", "BNAME"),
+    ("User B Speaker Config", "BSPKR"),
+    ("User B HPEQ File", "BQFILE"),
+    ("User B HPEQ Subject", "BQNAME"),
+    ("User B HPEQ Type", "BQTYPE"),
+    ("User B HPEQ Model", "BQMOD"),
+    ("User B Tactile", "BTACT"),
+]
+
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
@@ -26,7 +73,7 @@ async def async_setup_entry(
     """Set up sensor entities."""
     coordinator: RealiserA16DataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
 
-    sensors = [
+    sensors: list = [
         RealiserA16VolumeSensor(coordinator, "A"),
         RealiserA16VolumeSensor(coordinator, "B"),
         RealiserA16PresetNameSensor(coordinator, "A"),
@@ -34,6 +81,18 @@ async def async_setup_entry(
         RealiserA16StatusSensor(coordinator),
         RealiserA16SpeakerSensor(coordinator),
     ]
+
+    # Raw response sensors (disabled by default)
+    sensors += [
+        RealiserA16RawSensor(coordinator, label, key) for label, key in _RAW_SENSORS
+    ]
+
+    # User A / User B granular info sensors (disabled by default)
+    sensors += [
+        RealiserA16StatusKeySensor(coordinator, label, status_key)
+        for label, status_key in _USER_A_SENSORS + _USER_B_SENSORS
+    ]
+
     async_add_entities(sensors)
 
 
@@ -256,12 +315,132 @@ class RealiserA16SpeakerSensor(SensorEntity):
             "speakers": speakers_serialized,
         }
 
-    async def async_update_speakers(self) -> None:
-        """Trigger an on-demand speaker refresh (call via service or button)."""
-        await self.coordinator.hass.async_add_executor_job(
-            self.coordinator.refresh_speakers
+    async def async_added_to_hass(self) -> None:
+        """Register update listener."""
+        self.async_on_remove(
+            self.coordinator.async_add_listener(self.async_write_ha_state)
         )
-        self.async_write_ha_state()
+
+
+class RealiserA16RawSensor(SensorEntity):
+    """Diagnostic sensor exposing a raw device response string.
+
+    native_value = first 80 chars (quick glance in entity list).
+    extra_state_attributes["raw"] = full response string.
+    Disabled by default — enable in entity registry for debugging.
+    """
+
+    _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:code-braces"
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(
+        self,
+        coordinator: RealiserA16DataUpdateCoordinator,
+        label: str,
+        raw_key: str,
+    ) -> None:
+        """Initialize the raw sensor."""
+        self.coordinator = coordinator
+        self._label = label
+        self._raw_key = raw_key
+        slug = raw_key.replace("0x", "").replace("0X", "")
+        self._attr_unique_id = f"{coordinator.host}_raw_{slug}"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, coordinator.host)},
+            "name": f"Realiser A16 ({coordinator.host})",
+            "manufacturer": "Smyth Research",
+            "model": "Realiser A16",
+        }
+
+    @property
+    def name(self) -> str:
+        return self._label
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.last_update_success
+
+    @property
+    def native_value(self) -> Optional[str]:
+        raw = self._get_raw()
+        if raw is None:
+            return None
+        # Replace control chars for display
+        preview = raw.replace("\x00", "·").replace("\r", "").replace("\n", " ")
+        return preview[:80] if len(preview) > 80 else preview
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        raw = self._get_raw()
+        if raw is None:
+            return {}
+        return {
+            "raw": raw.replace("\x00", "·").replace("\r", ""),
+            "length": len(raw),
+        }
+
+    def _get_raw(self) -> Optional[str]:
+        if not self.coordinator.data:
+            return None
+        return self.coordinator.data.get("raw", {}).get(self._raw_key)
+
+    async def async_added_to_hass(self) -> None:
+        """Register update listener."""
+        self.async_on_remove(
+            self.coordinator.async_add_listener(self.async_write_ha_state)
+        )
+
+
+class RealiserA16StatusKeySensor(SensorEntity):
+    """Diagnostic sensor for a single key from coordinator.data['status'].
+
+    Covers all User A and User B info fields returned by 0x80 / 0xA0.
+    Disabled by default — enable individually in entity registry.
+    """
+
+    _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:information-outline"
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(
+        self,
+        coordinator: RealiserA16DataUpdateCoordinator,
+        label: str,
+        status_key: str,
+    ) -> None:
+        """Initialize the key sensor."""
+        self.coordinator = coordinator
+        self._label = label
+        self._status_key = status_key
+        slug = status_key.lower().replace(" ", "_")
+        self._attr_unique_id = f"{coordinator.host}_info_{slug}"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, coordinator.host)},
+            "name": f"Realiser A16 ({coordinator.host})",
+            "manufacturer": "Smyth Research",
+            "model": "Realiser A16",
+        }
+
+    @property
+    def name(self) -> str:
+        return self._label
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.last_update_success
+
+    @property
+    def native_value(self) -> Optional[str]:
+        if not self.coordinator.data:
+            return None
+        return self.coordinator.data.get("status", {}).get(self._status_key) or None
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        return {"key": self._status_key}
 
     async def async_added_to_hass(self) -> None:
         """Register update listener."""
