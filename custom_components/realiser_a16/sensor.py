@@ -32,6 +32,7 @@ async def async_setup_entry(
         RealiserA16PresetNameSensor(coordinator, "A"),
         RealiserA16PresetNameSensor(coordinator, "B"),
         RealiserA16StatusSensor(coordinator),
+        RealiserA16SpeakerSensor(coordinator),
     ]
     async_add_entities(sensors)
 
@@ -189,6 +190,78 @@ class RealiserA16StatusSensor(SensorEntity):
             "port": self.coordinator.port,
             "last_update_success": self.coordinator.last_update_success,
         }
+
+    async def async_added_to_hass(self) -> None:
+        """Register update listener."""
+        self.async_on_remove(
+            self.coordinator.async_add_listener(self.async_write_ha_state)
+        )
+
+
+class RealiserA16SpeakerSensor(SensorEntity):
+    """Sensor exposing speaker overview (mode + per-speaker state) as attributes.
+
+    native_value = number of visible speakers.
+    extra_state_attributes = full speakers dict for use in Lovelace custom cards.
+    """
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:speaker-multiple"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: RealiserA16DataUpdateCoordinator) -> None:
+        """Initialize the speaker sensor."""
+        self.coordinator = coordinator
+        self._attr_unique_id = f"{coordinator.host}_speakers"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, coordinator.host)},
+            "name": f"Realiser A16 ({coordinator.host})",
+            "manufacturer": "Smyth Research",
+            "model": "Realiser A16",
+        }
+
+    @property
+    def name(self) -> str:
+        """Return the name of the sensor."""
+        return "Speakers"
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        return self.coordinator.last_update_success
+
+    @property
+    def native_value(self) -> Optional[int]:
+        """Return number of visible speakers."""
+        speakers = (
+            self.coordinator.data.get("speakers", {}) if self.coordinator.data else {}
+        )
+        if not speakers:
+            return None
+        return sum(1 for s in speakers.values() if s.get("visible", False))
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        """Return full speaker state for Lovelace custom cards."""
+        if not self.coordinator.data:
+            return {}
+        speakers = self.coordinator.data.get("speakers", {})
+        assignments = self.coordinator.data.get("assignments", {})
+        mode = assignments.get("global", {}).get("ALL", "UNKNOWN")
+
+        # Serialise speakers with str keys (JSON-safe)
+        speakers_serialized = {str(spk_id): info for spk_id, info in speakers.items()}
+        return {
+            "mode": mode,
+            "speakers": speakers_serialized,
+        }
+
+    async def async_update_speakers(self) -> None:
+        """Trigger an on-demand speaker refresh (call via service or button)."""
+        await self.coordinator.hass.async_add_executor_job(
+            self.coordinator.refresh_speakers
+        )
+        self.async_write_ha_state()
 
     async def async_added_to_hass(self) -> None:
         """Register update listener."""

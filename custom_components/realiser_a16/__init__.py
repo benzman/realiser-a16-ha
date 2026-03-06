@@ -18,6 +18,7 @@ _LOGGER = logging.getLogger(__name__)
 
 DOMAIN = "realiser_a16"
 CONF_UPDATE_INTERVAL = "update_interval"
+CONF_SPEAKER_SWITCHES = "enable_speaker_switches"
 DEFAULT_UPDATE_INTERVAL = 10
 
 
@@ -103,16 +104,49 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
             status.update(self._parse_kv(raw_b))  # VB, BUR, etc.
             status.update(self._parse_kv(raw_pwr))  # PWR
 
+            # Keep existing speakers data if already fetched, don't poll on every update
+            existing_speakers = {}
+            if self.data:
+                existing_speakers = self.data.get("speakers", {})
+
             return {
                 "connected": True,
                 "status": status,
                 "assignments": self._parse_assignments(raw_assign),
+                "speakers": existing_speakers,
             }
 
         except Exception as err:
             self._disconnect()
             _LOGGER.error("Failed to fetch data: %s", err, exc_info=True)
             raise UpdateFailed(f"Failed to fetch data: {err}") from err
+
+    def refresh_speakers(self) -> Dict[str, Any]:
+        """Fetch speaker visibility and status on-demand (0xAE + 0xAF).
+
+        Returns parsed speakers dict and updates coordinator.data["speakers"].
+        """
+        try:
+            raw_vis = self._send(0xAE)
+            _LOGGER.debug("0xae Speaker visibility: %s", raw_vis[:120])
+            raw_act = self._send(0xAF)
+            _LOGGER.debug("0xaf Speaker status: %s", raw_act[:120])
+
+            speakers = self._parse_speakers(raw_vis, raw_act)
+
+            # Also refresh mode from assignments
+            raw_assign = self._send(0x37)
+            assignments = self._parse_assignments(raw_assign)
+
+            if self.data:
+                self.data["speakers"] = speakers
+                self.data["assignments"] = assignments
+
+            return speakers
+
+        except Exception as err:
+            _LOGGER.error("Failed to refresh speakers: %s", err)
+            raise
 
     async def _async_update_data(self) -> Dict[str, Any]:
         """Async update with lock."""
@@ -135,6 +169,55 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
             if "=" in token:
                 k, v = token.split("=", 1)
                 result[k.strip()] = v.strip()
+        return result
+
+    def _parse_speakers(self, raw_vis: str, raw_act: str) -> Dict[str, Any]:
+        """Parse speaker visibility (0xAE) and active-status (0xAF) responses.
+
+        Expected format per PDF:
+          0xAE → "V00,V01,V02,...,Vnn"  (comma-separated; index = speaker ID - 1,
+                                          value '1' = visible, '0' = hidden)
+          0xAF → "A00,A01,A02,...,Ann"  (same layout; '1' = active/soloed, '0' = muted)
+
+        Returns:
+            Dict keyed by speaker ID (int 1-50):
+                {
+                    1: {"name": "L",  "visible": True,  "state": "active"},
+                    2: {"name": "R",  "visible": True,  "state": "mute"},
+                    ...
+                }
+        """
+
+        # Parse comma-separated tokens like "V01,V00,V01,..."
+        def _parse_flags(raw: str) -> list:
+            """Return list of int flags (0 or 1) for each token."""
+            flags = []
+            for token in raw.replace("\r", "").replace("\n", "").split(","):
+                token = token.strip()
+                if not token:
+                    continue
+                # Token is like "V01" or "A00" - last char is the flag
+                if len(token) >= 1:
+                    try:
+                        flags.append(int(token[-1]))
+                    except ValueError:
+                        flags.append(0)
+            return flags
+
+        vis_flags = _parse_flags(raw_vis)
+        act_flags = _parse_flags(raw_act)
+
+        result = {}
+        for speaker_id in range(1, 51):
+            idx = speaker_id - 1
+            name = RealiserA16Hex.SPEAKER_NAMES.get(speaker_id, f"Spk{speaker_id}")
+            visible = bool(vis_flags[idx]) if idx < len(vis_flags) else False
+            active = bool(act_flags[idx]) if idx < len(act_flags) else False
+            result[speaker_id] = {
+                "name": name,
+                "visible": visible,
+                "state": "active" if active else "mute",
+            }
         return result
 
     def _parse_assignments(self, raw: str) -> Dict[str, Any]:

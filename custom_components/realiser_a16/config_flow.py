@@ -6,6 +6,7 @@ import socket
 from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_PORT, CONF_TIMEOUT
 
+from . import CONF_SPEAKER_SWITCHES
 from .realiser_a16_hex import RealiserA16Hex
 
 _LOGGER = logging.getLogger(__name__)
@@ -30,6 +31,7 @@ class RealiserA16ConfigFlow(config_entries.ConfigFlow, domain="realiser_a16"):
         self._port = 4101
         self._timeout = 30.0
         self._update_interval = 10
+        self._enable_speaker_switches = False
 
     async def async_step_user(self, user_input=None):
         """Handle the initial step."""
@@ -42,6 +44,7 @@ class RealiserA16ConfigFlow(config_entries.ConfigFlow, domain="realiser_a16"):
             self._port = user_input.get(CONF_PORT, 4101)
             self._timeout = user_input.get(CONF_TIMEOUT, 30.0)
             self._update_interval = user_input.get("update_interval", 10)
+            self._enable_speaker_switches = user_input.get(CONF_SPEAKER_SWITCHES, False)
 
             _LOGGER.info("Testing connection to %s:%s", self._host, self._port)
 
@@ -59,6 +62,7 @@ class RealiserA16ConfigFlow(config_entries.ConfigFlow, domain="realiser_a16"):
                         CONF_PORT: self._port,
                         CONF_TIMEOUT: self._timeout,
                         "update_interval": self._update_interval,
+                        CONF_SPEAKER_SWITCHES: self._enable_speaker_switches,
                     },
                 )
 
@@ -78,6 +82,9 @@ class RealiserA16ConfigFlow(config_entries.ConfigFlow, domain="realiser_a16"):
             vol.Optional("update_interval", default=self._update_interval): vol.All(
                 vol.Coerce(int), vol.Range(min=1, max=3600)
             ),
+            vol.Optional(
+                CONF_SPEAKER_SWITCHES, default=self._enable_speaker_switches
+            ): bool,
         }
 
         return self.async_show_form(
@@ -96,8 +103,8 @@ class RealiserA16ConfigFlow(config_entries.ConfigFlow, domain="realiser_a16"):
                 client = RealiserA16Hex(self._host, self._port, timeout=self._timeout)
                 _LOGGER.debug("Client created, connecting...")
                 client.connect()
-                _LOGGER.debug("Connected! Sending STATUS command (0x45)...")
-                resp = client.send(0x45)
+                _LOGGER.debug("Connected! Sending User A Info command (0x80)...")
+                resp = client.send(0x80)
                 _LOGGER.debug("Got response: %s", repr(resp[:100]) if resp else "EMPTY")
                 client.close()
                 return resp
