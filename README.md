@@ -5,8 +5,8 @@ Custom Home Assistant integration for controlling the Realiser A16 AV processor 
 ## Features
 
 - **Media Player** entities for Zone A and Zone B:
-  - Power on/off
-  - Volume up/down
+  - Power on/off (via dedicated power switch)
+  - Volume up/down (via service calls)
   - Mute toggle
   - Display current input source
   - Display current sound mode
@@ -16,11 +16,14 @@ Custom Home Assistant integration for controlling the Realiser A16 AV processor 
   - Preset names for both zones
   - Speaker assignments (detailed mapping)
   - Connection status
+  - Power status (on/standby)
 
 - **Switches**:
+  - Power toggle (standby/on)
   - All Solo / All Mute toggle
 
 - **Automatic polling** (configurable, default 10 seconds)
+- **Input source selection** via select entity
 
 ## Prerequisites
 
@@ -77,36 +80,61 @@ After setup, the following entities are created:
 - `sensor.realiser_a16_zone_b_preset_name`
 - `sensor.realiser_a16_assignments`
 - `sensor.realiser_a16_status`
+- `sensor.realiser_a16_power_status` (optional)
 
 ### Switches
-- `switch.realiser_a16_all_solo`
+- `switch.realiser_a16_power` - Standby/On toggle
+- `switch.realiser_a16_all_solo` - All Solo / All Mute toggle
 
-### Numbers
-- `number.realiser_a16_volume_a`
-- `number.realiser_a16_volume_b`
+### Selects
+- `select.realiser_a16_input_source` - Select input source (eARC, HDMI1-4, USB, LINE, STEREO, COAXIAL, OPTICAL)
 
-*(Note: Volume numbers are not yet implemented due to unclear command format)*
+### Not Yet Implemented
+- Volume control via number entities (requires further reverse engineering of command format)
+- Zone-specific mute/solo controls
 
 ## Protocol Documentation
 
-This integration uses the official Realiser A16 TCP IP Command Protocol described in the documentation.
+This integration uses the official Realiser A16 TCP IP Command Protocol.
 
 - Commands are sent as 2-digit hexadecimal numbers followed by `\r\n`.
 - Responses are ASCII strings terminated with a null byte (`\x00`).
 
-Key commands:
+### Commands Used by This Integration
+
+**Power Control:**
 - `0x2C`: Power ON
 - `0x2D`: Power OFF
 - `0x2E`: Power Status (returns `PWR=ON` or `PWR=STANDBY`)
-- `0x20-0x29`: Input source selection (eARC, HDMI1-4, USB, LINE, STEREO, COAXIAL, OPTICAL)
-- `0x37`: Get Speaker Assignments
-- `0x46`: Get Preset A (full preset data)
-- `0x47`: Get Preset B (full preset data)
-- `0x70-0x77`: Load Preset A 1-8
-- `0x97-0x9F`: Load Preset B 8-16
+
+**Status Queries:**
+- `0x45`: Get Status (legacy - returns preset data when powered on)
+- `0x37`: Get Speaker Assignments (zone mapping)
 - `0x64`: Get Firmware Version
 
-*Note: The legacy `0x45` command returns preset data when the device is powered on.*
+**Presets:**
+- `0x46`: Get Preset A (full preset data)
+- `0x47`: Get Preset B (full preset data)
+- `0x70-0x77`: Load Preset A (presets 1-8)
+- `0x97-0x9F`: Load Preset B (presets 8-16)
+
+**Input Selection:**
+- `0x20`: Select eARC
+- `0x21`: Select HDMI 1
+- `0x22`: Select HDMI 2
+- `0x23`: Select HDMI 3
+- `0x24`: Select HDMI 4
+- `0x25`: Select USB
+- `0x26`: Select LINE
+- `0x27`: Select STEREO
+- `0x28`: Select COAXIAL
+- `0x29`: Select OPTICAL
+
+**Zone Selection:**
+- `0x06`: Select Zone A
+- `0x07`: Select Zone B
+
+For the complete command list, see `commands.md` in this repository.
 
 ## Troubleshooting
 
