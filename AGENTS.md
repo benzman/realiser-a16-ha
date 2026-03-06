@@ -41,10 +41,13 @@ tail -f home-assistant.log | grep -i realiser
 
 ### Single Test Simulation
 ```bash
-# Test TCP client directly (from project root)
+# Comprehensive integration test (recommended)
+python3 test_integration.py 192.168.160.19
+
+# Basic TCP client test
 python3 test_connection.py
 
-# Or use the simpler version with explicit path
+# Simpler test with explicit path
 python3 test_connection_simple.py
 
 # Or import directly in Python
@@ -67,6 +70,21 @@ python3 -m py_compile custom_components/realiser_a16/*.py
 
 # Type check (optional)
 mypy custom_components/realiser_a16/ --ignore-missing-imports
+```
+
+### Manifest (manifest.json required fields)
+```json
+{
+  "domain": "realiser_a16",
+  "name": "Realiser A16",
+  "codeowners": ["@yourname"],
+  "config_flow": true,
+  "documentation": "https://github.com/yourrepo/realiser-a16-firmware",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "requirements": [],
+  "version": "0.0.1"
+}
 ```
 
 ## Code Style Guidelines

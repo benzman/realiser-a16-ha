@@ -2,15 +2,21 @@
 
 import logging
 import socket
-import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.const import CONF_HOST, CONF_PORT, CONF_TIMEOUT
-from homeassistant.core import HomeAssistant
 
 from .realiser_a16_hex import RealiserA16Hex
 
 _LOGGER = logging.getLogger(__name__)
+
+VOLUPTUOUS_IMPORTED = False
+try:
+    import voluptuous as vol
+
+    VOLUPTUOUS_IMPORTED = True
+except ImportError:
+    import homeassistant.helpers.config_validation as vol
 
 
 class RealiserA16ConfigFlow(config_entries.ConfigFlow, domain="realiser_a16"):
@@ -22,20 +28,24 @@ class RealiserA16ConfigFlow(config_entries.ConfigFlow, domain="realiser_a16"):
         """Initialize flow."""
         self._host = ""
         self._port = 4101
-        self._timeout = 15.0  # Reduced timeout for faster connection testing
+        self._timeout = 15.0
         self._update_interval = 10
 
     async def async_step_user(self, user_input=None):
         """Handle the initial step."""
         errors = {}
 
+        _LOGGER.info("Config flow started with input: %s", user_input)
+
         if user_input is not None:
-            self._host = user_input[CONF_HOST]
+            self._host = user_input.get(CONF_HOST, "")
             self._port = user_input.get(CONF_PORT, 4101)
-            self._timeout = user_input.get(CONF_TIMEOUT, 5.0)
+            self._timeout = user_input.get(CONF_TIMEOUT, 10.0)
             self._update_interval = user_input.get("update_interval", 10)
 
-            # Test connection with retry logic
+            _LOGGER.info("Testing connection to %s:%s", self._host, self._port)
+
+            # Test connection
             try:
                 await self._test_connection()
 
@@ -52,98 +62,54 @@ class RealiserA16ConfigFlow(config_entries.ConfigFlow, domain="realiser_a16"):
                     },
                 )
 
-            except ConnectionRefusedError:
-                _LOGGER.error("Connection refused by device")
+            except Exception as exc:  # noqa: BLE001
+                _LOGGER.exception("Connection test failed: %s", exc)
                 errors["base"] = "cannot_connect"
-            except socket.timeout:
-                _LOGGER.error("Connection timeout")
-                errors["base"] = "timeout"
-            except OSError as err:
-                _LOGGER.error("Network error: %s", err)
-                errors["base"] = "network_error"
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.error("Unexpected error during connection test: %s", err)
-                errors["base"] = "unknown"
 
-        # Show form
-        data_schema = vol.Schema(
-            {
-                vol.Required(CONF_HOST, default=self._host): str,
-                vol.Optional(CONF_PORT, default=self._port): vol.All(
-                    vol.Coerce(int), vol.Range(min=512, max=65535)
-                ),
-                vol.Optional(CONF_TIMEOUT, default=self._timeout): vol.All(
-                    vol.Coerce(float), vol.Range(min=5.0, max=30.0)
-                ),
-                vol.Optional("update_interval", default=self._update_interval): vol.All(
-                    vol.Coerce(int), vol.Range(min=5, max=300)
-                ),
-            }
-        )
+        # Build schema
+        schema = {
+            vol.Required(CONF_HOST, default=self._host): str,
+            vol.Optional(CONF_PORT, default=self._port): vol.All(
+                vol.Coerce(int), vol.Range(min=1, max=65535)
+            ),
+            vol.Optional(CONF_TIMEOUT, default=self._timeout): vol.All(
+                vol.Coerce(float), vol.Range(min=1.0, max=60.0)
+            ),
+            vol.Optional("update_interval", default=self._update_interval): vol.All(
+                vol.Coerce(int), vol.Range(min=1, max=3600)
+            ),
+        }
 
         return self.async_show_form(
             step_id="user",
-            data_schema=data_schema,
+            data_schema=vol.Schema(schema),
             errors=errors,
-            description_placeholders={
-                "default_port": "4101",
-                "default_interval": "10",
-                "timeout": "15",
-            },
+            description_placeholders={"host": "192.168.x.x", "port": "4101"},
         )
 
     async def _test_connection(self):
-        """Test connection to the A16 with retry and multiple commands."""
-        client = None
-        try:
-            # Connect with reasonable timeout for initial handshake
-            client = RealiserA16Hex(self._host, self._port, timeout=10.0)
-            await self.hass.async_add_executor_job(client.connect)
-            _LOGGER.debug("TCP connection established to %s:%s", self._host, self._port)
+        """Test connection to the A16."""
+        _LOGGER.info("Starting connection test to %s:%s", self._host, self._port)
 
-            # Test commands based on documented IP protocol
-            test_commands = [
-                (0x2E, "POWER_STATUS"),  # Returns PWR=ON or PWR=STANDBY when in standby
-                (0x45, "STATUS"),  # Returns preset data when powered on
-                (0x37, "ASSIGNMENTS"),  # Returns speaker assignments
-                (0x64, "VERSION"),  # Returns firmware version
-            ]
+        def sync_test():
+            try:
+                client = RealiserA16Hex(self._host, self._port, timeout=self._timeout)
+                _LOGGER.debug("Client created, connecting...")
+                client.connect()
+                _LOGGER.debug("Connected! Sending STATUS command (0x45)...")
+                resp = client.send(0x45)
+                _LOGGER.debug("Got response: %s", repr(resp[:100]) if resp else "EMPTY")
+                client.close()
+                return resp
+            except Exception as e:
+                _LOGGER.exception("sync_test failed: %s", e)
+                raise
 
-            for cmd, name in test_commands:
-                try:
-                    _LOGGER.debug("Sending test command: 0x%02x (%s)", cmd, name)
-                    response = await self.hass.async_add_executor_job(client.send, cmd)
-                    if response:
-                        _LOGGER.debug(
-                            "Command 0x%02x (%s) successful: %s",
-                            cmd,
-                            name,
-                            response[:200],
-                        )
-                        # We got a response - connection works!
-                        return True
-                    else:
-                        _LOGGER.debug(
-                            "Command 0x%02x (%s) returned empty response", cmd, name
-                        )
-                except socket.timeout:
-                    _LOGGER.debug(
-                        "Command 0x%02x (%s) timed out, trying next...", cmd, name
-                    )
-                    continue
-                except Exception as err:
-                    _LOGGER.debug("Command 0x%02x (%s) failed: %s", cmd, name, err)
-                    continue
+        result = await self.hass.async_add_executor_job(sync_test)
 
-            # No command succeeded
-            _LOGGER.warning(
-                "All test commands failed - device may not support TCP protocol"
-            )
+        if not result:
+            _LOGGER.error("Empty response received from device")
             raise Exception("No valid response from device")
 
-        finally:
-            if client:
-                try:
-                    client.close()
-                except Exception:
-                    pass
+        _LOGGER.info("Connection test successful!")
+        return True
