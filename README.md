@@ -1,6 +1,8 @@
 # Realiser A16 Home Assistant Integration
 
-Custom Home Assistant integration for controlling the Realiser A16 AV processor via its TCP IP command protocol.
+⚠️ **Under Construction** ⚠️
+
+This integration is still in active development and is not yet ready for production use. Some features are incomplete, experimental, or may not work as expected. You may encounter bugs or unexpected behavior. This integration is provided "as-is" and the API/behavior may change as development continues.
 
 ## Features
 
@@ -92,6 +94,19 @@ After setup, the following entities are created:
 ### Not Yet Implemented
 - Volume control via number entities (requires further reverse engineering of command format)
 - Zone-specific mute/solo controls
+- Direct volume set commands (currently only IR-based up/down available)
+- Sound mode presets beyond preset names
+- Detailed status information beyond basic on/off and input source
+
+## Current Limitations
+
+This integration is still being developed and has the following known limitations:
+
+- **Volume Control**: Only supports volume up/down via service calls. Absolute volume setting requires further protocol research.
+- **IR-Dependent Features**: Some functionality relies on IR commands which may not work reliably with all TV setups.
+- **Protocol Status**: Commands are reverse-engineered from Wireshark captures and partial documentation; some command behaviors may change or be undocumented.
+- **Polling Overhead**: Continuous polling (default 10s) may impact performance if the A16 has limited processing power.
+- **Error Handling**: Some error conditions may not be gracefully handled yet.
 
 ## Protocol Documentation
 
@@ -152,7 +167,7 @@ The exact command format for setting absolute volume is not yet documented. Curr
 
 ## Development
 
-This integration is based on reverse engineering of the protocol from Wireshark captures and the official documentation.
+This integration is based on reverse engineering of the protocol from Wireshark captures and the official documentation. The project is actively under development with new features being added regularly.
 
 ### File Structure
 ```
@@ -172,7 +187,7 @@ MIT License - Use at your own risk.
 
 ## Disclaimer
 
-This integration is not officially supported by Smyth Research. Use at your own risk. The authors are not responsible for any damage to your equipment.
+This integration is not officially supported by Smyth Research. It is provided as-is for experimental and development purposes only. The authors are not responsible for any damage to your equipment or data loss resulting from use of this software.
 
 ## Credits
 
