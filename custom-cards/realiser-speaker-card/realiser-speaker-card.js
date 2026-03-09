@@ -150,14 +150,23 @@ class RealiserSpeakerCard extends HTMLElement {
     const container = document.createElement('div');
     container.className = 'realiser-speaker-container';
 
-    // Header with title and power/info
+    // Header with title, mode and refresh button
     const header = document.createElement('div');
     header.className = 'realiser-header';
     header.innerHTML = `
       <div class="realiser-title">Speaker Grid</div>
       <div class="realiser-mode">Mode: ${this._mode}</div>
+      <button class="realiser-refresh-btn">Refresh</button>
     `;
     container.appendChild(header);
+
+    // Add refresh button event listener
+    const refreshBtn = header.querySelector('.realiser-refresh-btn');
+    refreshBtn.addEventListener('click', () => {
+      if (this._hass) {
+        this._hass.callService('realiser_a16', 'refresh_speakers');
+      }
+    });
 
     // Create grid container (9 columns)
     const gridContainer = document.createElement('div');
@@ -259,6 +268,22 @@ class RealiserSpeakerCard extends HTMLElement {
         padding: 5px 10px;
         background: #ddd;
         border-radius: 5px;
+      }
+
+      .realiser-refresh-btn {
+        padding: 5px 15px;
+        font-size: 12px;
+        border: none;
+        border-radius: 5px;
+        background-color: #2196F3;
+        color: white;
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+        margin-left: 10px;
+      }
+
+      .realiser-refresh-btn:hover {
+        background-color: #0b7dda;
       }
 
       .realiser-grid-container {

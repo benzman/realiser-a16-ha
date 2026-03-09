@@ -6,7 +6,7 @@ import socket
 from datetime import timedelta
 from typing import Any, Dict, Optional
 
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntry, ServiceCall
 from homeassistant.const import CONF_HOST, CONF_PORT, CONF_TIMEOUT
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -267,6 +267,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+
+    # Register services
+    async def async_refresh_speakers(call: ServiceCall) -> None:
+        """Service to manually refresh speaker data."""
+        await hass.async_add_executor_job(coordinator.refresh_speakers)
+        # Also trigger a coordinator refresh to update all entities
+        await coordinator.async_request_refresh()
+
+    hass.services.async_register(DOMAIN, "refresh_speakers", async_refresh_speakers)
 
     await hass.config_entries.async_forward_entry_setups(
         entry, ["media_player", "sensor", "switch", "select"]

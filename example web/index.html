@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" href="style.css?v=1.0">
+</head>
+<body>
+    <h1>A16 Control</h1>
+    <div style="position: absolute; top: 10px; right: 10px; z-index: 10001;">
+        <button class="input-btn" id="powerbutton" onclick="sendCommand('NON_IRIP', 13)" id="powerbutton" style="background-color: #ff5722; border-radius: 50%; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: bold; color: white;">
+            &#x23FB;
+        </button>     
+    </div>
+    <!-- <div id="blocker" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.8); z-index: 9999; color: white; display: flex; align-items: center; justify-content: center; font-size: 2em; text-align: center;">
+        <span id="powerstatus">Loading, please wait...</span>
+    </div> -->
+
+    <div class="container">
+        <div class="section">
+            <div class="sectio">
+                <h2>Information</h2>
+                <div style="display: grid; grid-template-columns: auto auto; gap: 10px; text-align: left;">
+                <div>Audio Upmixer:</div><div id="UMIX">--</div>
+                <div>Format:</div><div id="LM">--</div>
+                <div>Users:</div><div id="USER">--</div>
+                <div>Legacy:</div><div id="LEG">--</div>
+                <div>HT Mode:</div><div id="HTMODE">--</div>
+                </div>
+            </div>
+
+            <div class="sectio">
+                <h2>Input Selection</h2>
+                <!-- <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 10px;"> -->
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; min-width: 120px; max-width: 300px;">
+                    <button class="input-btn input-select" id="eARC" onclick="sendCommand('NON_IRIP', 1)">eARC</button>
+                    <button class="input-btn input-select" id="HDMI-1" onclick="sendCommand('NON_IRIP', 2)">HDMI 1</button>
+                    <button class="input-btn input-select" id="HDMI-2" onclick="sendCommand('NON_IRIP', 3)">HDMI 2</button>
+                    <button class="input-btn input-select" id="HDMI-3" onclick="sendCommand('NON_IRIP', 4)">HDMI 3</button>
+                    <button class="input-btn input-select" id="HDMI-4" onclick="sendCommand('NON_IRIP', 5)">HDMI 4</button>
+                    <button class="input-btn input-select" id="USB" onclick="sendCommand('NON_IRIP', 6)">USB</button>
+                    <button class="input-btn input-select" id="DANTE" onclick="sendCommand('NON_IRIP', 7)">LINE/DANTE</button>
+                    <button class="input-btn input-select" id="STEREO" onclick="sendCommand('NON_IRIP', 8)">STEREO</button>
+                    <button class="input-btn input-select" id="COAXIAL" onclick="sendCommand('NON_IRIP', 9)">COAXIAL</button>
+                    <button class="input-btn input-select" id="OPTICAL" onclick="sendCommand('NON_IRIP', 10)">OPTICAL</button>
+                </div>
+            </div>
+
+        <!-- Volume Control Section -->
+            <div class="sectio">
+                <h2>Volume Control</h2>
+                <div style="display: flex; align-items: center; justify-content: center; gap: 10px;">
+                    <div style="display: flex; flex-direction: column; align-items: center;">
+                        <span>Volume A</span>
+                        <button class="input-btn" onclick="sendCommand('IRIP', 41)" style="margin-bottom: 10px;">&uarr;</button>
+                        <div style="padding: 10px; border: 1px solid #ccc; border-radius: 5px; min-width: 60px; cursor: pointer;" onclick="sendCommand('IRIP', 45)">
+                            <span id="VA">--</span>
+                        </div>
+                        <button class="input-btn" onclick="sendCommand('IRIP', 42)" style="margin-top: 10px;">&darr;</button>
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; align-items: center;">
+                        <span>Volume B</span>
+                        <button class="input-btn" onclick="sendCommand('IRIP', 43)" style="margin-bottom: 10px;">&uarr;</button>
+                        <div style="padding: 10px; border: 1px solid #ccc; border-radius: 5px; min-width: 60px; cursor: pointer;" onclick="sendCommand('IRIP', 46)">
+                            <span id="VB">--</span>
+                        </div>
+                        <button class="input-btn" onclick="sendCommand('IRIP', 44)" style="margin-top: 10px;">&darr;</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Speaker Grid Section -->
+        <div class="section" style="text-align: center; min-width:400px;">
+            <h2>Speaker Grid</h2>
+            <div class="grid-container grid-LS" style="min-width: 400px;">
+                <!-- Row 1 -->
+                <button class="grid-item lfe" id="4">SW</button>
+                <button class="grid-item floor" id="1">L</button>
+                <button class="grid-item floor" id="17">Lc</button>
+                <button class="grid-item floor" id="37">Lsc</button>
+                <button class="grid-item floor" id="3">C</button>
+                <button class="grid-item floor" id="38">Rsc</button>
+                <button class="grid-item floor" id="18">Rc</button>
+                <button class="grid-item floor" id="2">R</button>
+                <button class="grid-item lfe" id="12">SW2</button>
+
+                <!-- Row 2 -->
+                <button class="grid-item floor" id="13">Lw</button>
+                <button class="grid-item height" id="45">Lhw</button>
+                <button class="grid-item height" id="25">Lh</button>
+                <div class="grid-item hidden"></div> <!-- Empty slot -->
+                <button class="grid-item height" id="22">Ch</button>
+                <div class="grid-item hidden"></div> <!-- Empty slot -->
+                <button class="grid-item height" id="26">Rh</button>
+                <button class="grid-item height" id="46">Rhw</button>
+                <button class="grid-item floor" id="14">Rw</button>
+
+                <!-- Row 3 -->
+                <button class="grid-item floor" id="39">Ls1</button>
+                <div class="grid-item hidden"></div> <!-- Empty slot -->
+                <button class="grid-item overhead" id="31">Ltf</button>
+                <button class="grid-item under" id="19">Lu</button>
+                <button class="grid-item under" id="21">Cu</button>
+                <button class="grid-item under" id="20">Ru</button>
+                <button class="grid-item overhead" id="32">Rtf</button>
+                <div class="grid-item hidden"></div> <!-- Empty slot -->
+                <button class="grid-item floor" id="40">Rs1</button>
+
+                <!-- Row 4 -->
+                <button class="grid-item floor" id="9">Lss</button>
+                <button class="grid-item height" id="27">Lhs</button>
+                <button class="grid-item overhead" id="33">Ltm</button>
+                <div class="grid-item hidden"></div> <!-- Empty slot -->
+                <button class="grid-item overhead" id="24">T</button>
+                <div class="grid-item hidden"></div> <!-- Empty slot -->
+                <button class="grid-item overhead" id="34">Rtm</button>
+                <button class="grid-item height" id="28">Rhs</button>
+                <button class="grid-item floor" id="10">Rss</button>
+
+                <!-- Row 5 -->
+                <button class="grid-item floor" id="5">Ls</button>
+                <button class="grid-item height" id="47">Lhs1</button>
+                <button class="grid-item overhead" id="35">Ltr</button>
+                <div class="grid-item hidden"></div> <!-- Empty slot -->
+                <div class="grid-item hidden"></div> <!-- Empty slot -->
+                <div class="grid-item hidden"></div> <!-- Empty slot -->
+                <button class="grid-item overhead" id="36">Rtr</button>
+                <button class="grid-item height" id="48">Rhs</button>
+                <button class="grid-item floor" id="6">Rs</button>
+
+                <!-- Row 6 -->
+                <button class="grid-item floor" id="41">Lrs1</button>
+                <div class="grid-item hidden"></div> <!-- Empty slot -->
+                <button class="grid-item height" id="29">Lhr</button>
+                <button class="grid-item under" id="49">Lbu</button>
+                <button class="grid-item height" id="23">Chr</button>
+                <button class="grid-item under" id="50">Rbu</button>
+                <button class="grid-item height" id="30">Rhr</button>
+                <div class="grid-item hidden"></div> <!-- Empty slot -->
+                <button class="grid-item floor" id="42">Rrs1</button>
+
+                <!-- Row 7 -->
+                <button class="grid-item lfe" id="51">SW</button>
+                <button class="grid-item floor" id="7">Lb</button>
+                <button class="grid-item floor" id="43">Lrs2</button>
+                <button class="grid-item floor" id="15">Lbs</button>
+                <button class="grid-item floor" id="11">Cr</button>
+                <button class="grid-item floor" id="16">Rbs</button>
+                <button class="grid-item floor" id="44">Rrs2</button>
+                <button class="grid-item floor" id="8">Rb</button>
+                <button class="grid-item lfe" id="52">SW</button>
+            </div>
+            <div id="MUTE/SOLO">MUTE/SOLO</div>
+            <button class="input-btn" onclick="sendCommand('NON_IRIP', 0)" id="ALL">ALL</button>
+        </div>
+    
+
+        <!-- User A Section -->
+        <div class="section">
+            <div class="sectio">
+                <h2 id="AUR">User A</h2>
+                <div class="container-User">
+                    <div class="grid-container grid-User">
+                        <button class="grid-item pa-select" id="PA01" onclick="sendCommand('NON_IRIP', 41)">1</button>
+                        <button class="grid-item pa-select" id="PA02" onclick="sendCommand('NON_IRIP', 42)">2</button>
+                        <button class="grid-item pa-select" id="PA03" onclick="sendCommand('NON_IRIP', 43)">3</button>
+                        <button class="grid-item pa-select" id="PA04" onclick="sendCommand('NON_IRIP', 44)">4</button>
+                        <button class="grid-item pa-select" id="PA05" onclick="sendCommand('NON_IRIP', 45)">5</button>
+                        <button class="grid-item pa-select" id="PA06" onclick="sendCommand('NON_IRIP', 46)">6</button>
+                        <button class="grid-item pa-select" id="PA07" onclick="sendCommand('NON_IRIP', 47)">7</button>
+                        <button class="grid-item pa-select" id="PA08" onclick="sendCommand('NON_IRIP', 48)">8</button>
+                        <button class="grid-item pa-select" id="PA09" onclick="sendCommand('NON_IRIP', 49)">9</button>
+                        <button class="grid-item pa-select" id="PA10" onclick="sendCommand('NON_IRIP', 50)">10</button>
+                        <button class="grid-item pa-select" id="PA11" onclick="sendCommand('NON_IRIP', 51)">11</button>
+                        <button class="grid-item pa-select" id="PA12" onclick="sendCommand('NON_IRIP', 52)">12</button>
+                    </div>
+
+                    <div class="grid-container grid-User" style="grid-template-columns: repeat(2, 1fr); min-width: 250px;">
+                        <div>Listening Room:</div><div id="AROOM">--</div>
+                        <div>Layout:</div><div id="ASPKR">--</div>
+                        <div>Subject:</div><div id="ANAME">--</div>
+                        <div>HPEQ File:</div><div id="AQFILE">--</div>
+                        <div>HPEQ Subject:</div><div id="AQNAME">--</div>
+                        <div>HPEQ Date:</div><div id="AQDATE">--</div>
+                        <div>HPEQ Type:</div><div id="AQTYPE">--</div>
+                        <div>Headphone:</div><div id="AQMOD">--</div>
+                        <div>Tactile:</div><div id="ATACT">--</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- User B Section -->
+            <div class="sectio">
+                <h2 id="BUR">User B</h2>
+                <div class="container-User">
+                    <div class="grid-container grid-User">
+                        <button class="grid-item pb-select" id="PB01" onclick="sendCommand('NON_IRIP', 73)">1</button>
+                        <button class="grid-item pb-select" id="PB02" onclick="sendCommand('NON_IRIP', 74)">2</button>
+                        <button class="grid-item pb-select" id="PB03" onclick="sendCommand('NON_IRIP', 75)">3</button>
+                        <button class="grid-item pb-select" id="PB04" onclick="sendCommand('NON_IRIP', 76)">4</button>
+                        <button class="grid-item pb-select" id="PB05" onclick="sendCommand('NON_IRIP', 77)">5</button>
+                        <button class="grid-item pb-select" id="PB06" onclick="sendCommand('NON_IRIP', 78)">6</button>
+                        <button class="grid-item pb-select" id="PB07" onclick="sendCommand('NON_IRIP', 79)">7</button>
+                        <button class="grid-item pb-select" id="PB08" onclick="sendCommand('NON_IRIP', 80)">8</button>
+                        <button class="grid-item pb-select" id="PB09" onclick="sendCommand('NON_IRIP', 81)">9</button>
+                        <button class="grid-item pb-select" id="PB10" onclick="sendCommand('NON_IRIP', 82)">10</button>
+                        <button class="grid-item pb-select" id="PB11" onclick="sendCommand('NON_IRIP', 83)">11</button>
+                        <button class="grid-item pb-select" id="PB12" onclick="sendCommand('NON_IRIP', 84)">12</button>
+                    </div>
+
+                    <div class="grid-container grid-User" style="grid-template-columns: repeat(2, 1fr); min-width: 250px;">
+                        <div>Listening Room:</div><div id="BROOM">--</div>
+                        <div>Layout:</div><div id="BSPKR">--</div>
+                        <div>Subject:</div><div id="BNAME">--</div>
+                        <div>HPEQ File:</div><div id="BQFILE">--</div>
+                        <div>HPEQ Subject:</div><div id="BQNAME">--</div>
+                        <div>HPEQ Date:</div><div id="BQDATE">--</div>
+                        <div>HPEQ Type:</div><div id="BQTYPE">--</div>
+                        <div>Headphone:</div><div id="BQMOD">--</div>
+                        <div>Tactile:</div><div id="BTACT">--</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="section" id='response-window'>
+            <strong>TCP Response:</strong><br>
+            <span id='response-content'></span>
+        </div>
+    </div>
+
+
+    <div style="text-align: center;">
+        <h2>Pegelanzeige</h2>
+        <button class="input-btn grey" id="levels_active" onclick="activateLevels()">Activate Levels</button>
+        <button class="input-btn" onclick="assignments()">Channel Assignments</button>
+        <table style="margin: 0 auto; border-collapse: collapse; width: 80%; max-width: 600px;">
+            <thead>
+                <tr style="background-color: #4CAF50; color: white;">
+                    <th style="width: 40px;">CH</th>
+                    <th style="width: 80px;">A</th>
+                    <th style="width: 80px;">B</th>
+                    <th >Pegel</th>
+                </tr>
+            </thead>
+            <tbody id="level-table">
+                <tr class="ch01">
+                    <td >1</td>
+                    <td class="A" ></td>
+                    <td class="B" ></td>
+                    <td >
+                        <div class="level" ></div>
+                    </td>
+                </tr>
+                <tr class="ch02">
+                    <td >2</td>
+                    <td class="A" ></td>
+                    <td class="B" ></td>
+                    <td >
+                        <div class="level" ></div>
+                    </td>
+                </tr>
+                <tr class="ch03">
+                    <td >3</td>
+                    <td class="A" ></td>
+                    <td class="B" ></td>
+                    <td >
+                        <div class="level" ></div>
+                    </td>
+                </tr>
+                <tr class="ch04">
+                    <td >4</td>
+                    <td class="A" ></td>
+                    <td class="B" ></td>
+                    <td >
+                        <div class="level" ></div>
+                    </td>
+                </tr>
+                <tr class="ch05">
+                    <td >5</td>
+                    <td class="A" ></td>
+                    <td class="B" ></td>
+                    <td >
+                        <div class="level" ></div>
+                    </td>
+                </tr>
+                <tr class="ch06">
+                    <td >6</td>
+                    <td class="A" ></td>
+                    <td class="B" ></td>
+                    <td >
+                        <div class="level" ></div>
+                    </td>
+                </tr>
+                <tr class="ch07">
+                    <td >7</td>
+                    <td class="A" ></td>
+                    <td class="B" ></td>
+                    <td >
+                        <div class="level" ></div>
+                    </td>
+                </tr>
+                <tr class="ch08">
+                    <td >8</td>
+                    <td class="A" ></td>
+                    <td class="B" ></td>
+                    <td >
+                        <div class="level" ></div>
+                    </td>
+                </tr>
+                <tr class="ch09">
+                    <td >9</td>
+                    <td class="A" ></td>
+                    <td class="B" ></td>
+                    <td >
+                        <div class="level" ></div>
+                    </td>
+                </tr>
+                <tr class="ch10">
+                    <td >10</td>
+                    <td class="A" ></td>
+                    <td class="B" ></td>
+                    <td >
+                        <div class="level" ></div>
+                    </td>
+                </tr>
+                <tr class="ch11">
+                    <td >11</td>
+                    <td class="A" ></td>
+                    <td class="B" ></td>
+                    <td >
+                        <div class="level" ></div>
+                    </td>
+                </tr>
+                <tr class="ch12">
+                    <td >12</td>
+                    <td class="A" ></td>
+                    <td class="B" ></td>
+                    <td >
+                        <div class="level" ></div>
+                    </td>
+                </tr>
+                <tr class="ch13">
+                    <td >13</td>
+                    <td class="A" ></td>
+                    <td class="B" ></td>
+                    <td >
+                        <div class="level" ></div>
+                    </td>
+                </tr>
+                <tr class="ch14">
+                    <td >14</td>
+                    <td class="A" ></td>
+                    <td class="B" ></td>
+                    <td >
+                        <div class="level" ></div>
+                    </td>
+                </tr>
+                <tr class="ch15">
+                    <td >15</td>
+                    <td class="A" ></td>
+                    <td class="B" ></td>
+                    <td >
+                        <div class="level" ></div>
+                    </td>
+                </tr>
+                <tr class="ch16">
+                    <td >16</td>
+                    <td class="A" ></td>
+                    <td class="B" ></td>
+                    <td >
+                        <div class="level" ></div>
+                    </td>
+                </tr>
+                <tr class="ch17">
+                    <td >17</td>
+                    <td class="A" ></td>
+                    <td class="B" ></td>
+                    <td >
+                        <div class="level" ></div>
+                    </td>
+                </tr>
+                <tr class="ch18">
+                    <td >18</td>
+                    <td class="A" ></td>
+                    <td class="B" ></td>
+                    <td >
+                        <div class="level" ></div>
+                    </td>
+                </tr>
+                <tr class="ch19">
+                    <td >19</td>
+                    <td class="A" ></td>
+                    <td class="B" ></td>
+                    <td >
+                        <div class="level" ></div>
+                    </td>
+                </tr>
+                <tr class="ch20">
+                    <td >20</td>
+                    <td class="A" ></td>
+                    <td class="B" ></td>
+                    <td >
+                        <div class="level" ></div>
+                    </td>
+                </tr>
+                <tr class="ch21">
+                    <td >21</td>
+                    <td class="A" ></td>
+                    <td class="B" ></td>
+                    <td >
+                        <div class="level" ></div>
+                    </td>
+                </tr>
+                <tr class="ch22">
+                    <td >22</td>
+                    <td class="A" ></td>
+                    <td class="B" ></td>
+                    <td >
+                        <div class="level" ></div>
+                    </td>
+                </tr>
+                <tr class="ch23">
+                    <td >23</td>
+                    <td class="A" ></td>
+                    <td class="B" ></td>
+                    <td >
+                        <div class="level" ></div>
+                    </td>
+                </tr>
+                <tr class="ch24">
+                    <td >24</td>
+                    <td class="A" ></td>
+                    <td class="B" ></td>
+                    <td >
+                        <div class="level" ></div>
+                    </td>
+                </tr>
+                <tr class="AHL">
+                    <td rowspan="4" colspan="2">A</td>
+                    <td>HP L</td>
+                    <td>
+                        <div class="level" ></div>
+                    </td>
+                </tr>
+                <tr class="AHR">
+                    <td>HP R</td>
+                    <td>
+                        <div class="level" ></div>
+                    </td>
+                </tr>
+                <tr class="ATL">
+                    <td>TACT L</td>
+                    <td>
+                        <div class="level" ></div>
+                    </td>
+                </tr>
+                <tr class="ATR">
+                    <td>TACT R</td>
+                    <td>
+                        <div class="level" ></div>
+                    </td>
+                </tr>
+                <tr class="BHL">
+                    <td rowspan="4" colspan="2">B</td>
+                    <td>HP L</td>
+                    <td>
+                        <div class="level" ></div>
+                    </td>
+                </tr>
+                <tr class="BHR">
+                    <td>HP R</td>
+                    <td>
+                        <div class="level" ></div>
+                    </td>
+                </tr>
+                <tr class="BTL">
+                    <td>TACT L</td>
+                    <td>
+                        <div class="level" ></div>
+                    </td>
+                </tr>
+                <tr class="BTR">
+                    <td>TACT R</td>
+                    <td>
+                        <div class="level" ></div>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+
+    <div style='text-align: center;'>
+        <button class='close' onclick="closeConnection()">Close TCP Connection</button>
+    </div>
+
+    <div style="width: 100%;">
+        <details>
+            <div id="command-buttons" style="display: flex; flex-flow: wrap; justify-content: center; gap: 20px; margin: 20px 0; padding: 40px;">
+            </div>
+        </details>
+    </div>
+    
+    <!-- <div id='response-window'>
+        <strong>TCP Response:</strong><br>
+        <span id='response-content'></span>
+    </div> -->
+    
+
+  
+    <script src="script.js"></script>
+</body>
+
+</html>
