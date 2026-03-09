@@ -54,6 +54,9 @@ class RealiserA16Hex:
     CMD_RESET_LEVELS = 0x38
     CMD_GET_VERSION = 0x64
 
+    # All key - toggles SOLO/MUTE mode (Table 1: #38) → ALL=SOLO or ALL=MUTE
+    CMD_ALL_TOGGLE = 0x1A
+
     # User A info (Table 2: #57) - VA, AUR, IN, ASPKR, ...
     CMD_USER_A_INFO = 0x80
     # User A volume only (Table 2: #60) - VA=27-99
@@ -63,6 +66,70 @@ class RealiserA16Hex:
     CMD_USER_B_INFO = 0xA0
     # User B volume only (Table 2: #92) - VB=27-99
     CMD_VOL_B_GET = 0xA3
+
+    # Speaker visibility (Table 2: #103) → V00,V01,...Vnn
+    CMD_SPEAKER_VISIBILITY = 0xAE
+    # Active speaker status (Table 2: #104) → A00,A01,...Ann
+    CMD_SPEAKER_STATUS = 0xAF
+
+    # Speaker select base (Table 2: #106-155)
+    # Speaker ID n (1-50) → command = 0xB0 + n
+    # In SOLO mode: solos speaker; in MUTE mode: toggles between active and muted
+    CMD_SPEAKER_BASE = 0xB0
+
+    # Speaker name lookup table (from PDF Table 3)
+    SPEAKER_NAMES: dict = {
+        1: "L",
+        2: "R",
+        3: "C",
+        4: "SW",
+        5: "Ls",
+        6: "Rs",
+        7: "Lb",
+        8: "Rb",
+        9: "Lss",
+        10: "Rss",
+        11: "Ltr",
+        12: "Rtr",
+        13: "Lw",
+        14: "Rw",
+        15: "Lbs",
+        16: "Rbs",
+        17: "Lc",
+        18: "Rc",
+        19: "Lu",
+        20: "Ru",
+        21: "Cu",
+        22: "Ch",
+        23: "Chr",
+        24: "T",
+        25: "Lh",
+        26: "Rh",
+        27: "Lhs",
+        28: "Rhs",
+        29: "Lhr",
+        30: "Rhr",
+        31: "Ltf",
+        32: "Rtf",
+        33: "Ltm",
+        34: "Rtm",
+        35: "Ltr",
+        36: "Rtr",
+        37: "Lsc",
+        38: "Rsc",
+        39: "Ls1",
+        40: "Rs1",
+        41: "Lrs1",
+        42: "Rrs1",
+        43: "Lrs2",
+        44: "Rrs2",
+        45: "Lhw",
+        46: "Rhw",
+        47: "Lhs1",
+        48: "Rhs1",
+        49: "Lbu",
+        50: "Rbu",
+    }
 
     # Presets User A (0x70-0x7f = Preset 1-16)
     CMD_LOAD_PRESET_A1 = 0x70
@@ -193,57 +260,39 @@ class RealiserA16Hex:
     def select_zone_b(self) -> str:
         return self.send(self.CMD_ZONE_B)
 
-    # Convenience methods - Status queries
-    def get_status(self) -> str:
-        """Get status (returns preset data when powered on)."""
-        return self.send(self.CMD_GET_STATUS)
-
+    # Convenience methods
     def get_assignments(self) -> str:
         return self.send(self.CMD_GET_ASSIGNMENTS)
-
-    def reset_levels(self) -> str:
-        return self.send(self.CMD_RESET_LEVELS)
 
     def get_version(self) -> str:
         return self.send(self.CMD_GET_VERSION)
 
-    # Convenience methods - Input selection
-    def select_source(self, source: str) -> str:
-        """Select input source: earc, hdmi1-hdmi4, usb, line, stereo, coaxial, optical"""
-        sources = {
-            "earc": self.CMD_SOURCE_EARC,
-            "hdmi1": self.CMD_SOURCE_HDMI1,
-            "hdmi2": self.CMD_SOURCE_HDMI2,
-            "hdmi3": self.CMD_SOURCE_HDMI3,
-            "hdmi4": self.CMD_SOURCE_HDMI4,
-            "usb": self.CMD_SOURCE_USB,
-            "line": self.CMD_SOURCE_LINE,
-            "stereo": self.CMD_SOURCE_STEREO,
-            "coaxial": self.CMD_SOURCE_COAXIAL,
-            "optical": self.CMD_SOURCE_OPTICAL,
-        }
-        if source.lower() not in sources:
-            raise ValueError(f"Unknown source: {source}")
-        return self.send(sources[source.lower()])
-
-    # Convenience methods - Presets
-    def get_preset_a(self) -> str:
-        return self.send(self.CMD_GET_PRESET_A)
-
-    def get_preset_b(self) -> str:
-        return self.send(self.CMD_GET_PRESET_B)
+    def get_user_a_info(self) -> str:
+        return self.send(self.CMD_USER_A_INFO)
 
     def get_user_b_info(self) -> str:
-        return self.send(self.CMD_GET_USER_B_INFO)
+        return self.send(self.CMD_USER_B_INFO)
+
+    def get_speaker_visibility(self) -> str:
+        return self.send(self.CMD_SPEAKER_VISIBILITY)
+
+    def get_speaker_status(self) -> str:
+        return self.send(self.CMD_SPEAKER_STATUS)
+
+    def select_speaker(self, speaker_id: int) -> str:
+        """Select/toggle speaker by ID (1-50)."""
+        if not 1 <= speaker_id <= 50:
+            raise ValueError("Speaker ID must be 1-50")
+        return self.send(self.CMD_SPEAKER_BASE + speaker_id)
 
     def load_preset_a(self, preset_num: int) -> str:
-        """Load User A preset 1-8."""
-        if not 1 <= preset_num <= 8:
-            raise ValueError("Preset must be 1-8")
+        """Load User A preset 1-16."""
+        if not 1 <= preset_num <= 16:
+            raise ValueError("Preset must be 1-16")
         return self.send(0x70 + preset_num - 1)
 
     def load_preset_b(self, preset_num: int) -> str:
-        """Load User B preset 8-16."""
-        if not 8 <= preset_num <= 16:
-            raise ValueError("Preset must be 8-16")
-        return self.send(0x97 + preset_num - 8)
+        """Load User B preset 1-16."""
+        if not 1 <= preset_num <= 16:
+            raise ValueError("Preset must be 1-16")
+        return self.send(0x90 + preset_num - 1)
