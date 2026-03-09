@@ -19,13 +19,16 @@ This integration is still in active development and is not yet ready for product
   - Speaker assignments (detailed mapping)
   - Connection status
   - Power status (on/standby)
+  - Speaker overview (for custom Lovelace cards)
 
 - **Switches**:
   - Power toggle (standby/on)
   - All Solo / All Mute toggle
+  - **Individual speaker switches** - mute/solo for each of up to 50 speakers (requires enable_speaker_switches: true in config)
 
 - **Automatic polling** (configurable, default 10 seconds)
 - **Input source selection** via select entity
+- **Custom Lovelace Card** - Realiser Speaker Grid with visual speaker layout (optional)
 
 ## Prerequisites
 
@@ -54,6 +57,7 @@ git clone <this-repo-url> custom_components/realiser_a16
 4. Enter the IP address and port of your A16.
 
 5. Configure the update interval (default: 10 seconds).
+6. (Optional) Enable "Speaker switches" to get individual speaker control switches.
 
 ### Option 2: HACS (recommended)
 
@@ -69,6 +73,22 @@ git clone <this-repo-url> custom_components/realiser_a16
 
 4. Set up via **Settings → Devices & Services → Add Integration**.
 
+## Lovelace Custom Card (Optional)
+
+For a visual speaker grid overview similar to the A16's web interface, you can install the optional Realiser Speaker Card:
+
+1. Copy `custom-cards/realiser-speaker-card/realiser-speaker-card.js` to your Home Assistant `/www/` directory.
+2. In Lovelace → Settings (three dots) → **Ressourcen**, add:
+   - Type: `JavaScript Module`
+   - URL: `/local/realiser-speaker-card.js?v=1`
+3. Add the card to your dashboard:
+   ```yaml
+   type: custom:realiser-speaker-card
+   entity: sensor.realiser_a16_speakers
+   ```
+
+See `custom-cards/realiser-speaker-card/README.md` for detailed documentation.
+
 ## Supported Entities
 
 After setup, the following entities are created:
@@ -82,21 +102,23 @@ After setup, the following entities are created:
 - `sensor.realiser_a16_zone_b_preset_name`
 - `sensor.realiser_a16_assignments`
 - `sensor.realiser_a16_status`
+- `sensor.realiser_a16_speakers` - Provides speaker overview for custom cards (includes all 52 speaker positions with visibility and state)
 - `sensor.realiser_a16_power_status` (optional)
 
 ### Switches
 - `switch.realiser_a16_power` - Standby/On toggle
 - `switch.realiser_a16_all_solo` - All Solo / All Mute toggle
+- **`switch.realiser_a16_speaker_*` (1-50)** - Individual speaker mute/solo switches (50 entities). Only created when `enable_speaker_switches: true` is set in config options.
 
 ### Selects
 - `select.realiser_a16_input_source` - Select input source (eARC, HDMI1-4, USB, LINE, STEREO, COAXIAL, OPTICAL)
 
-### Not Yet Implemented
+### Not Yet Implemented / Planned
 - Volume control via number entities (requires further reverse engineering of command format)
-- Zone-specific mute/solo controls
 - Direct volume set commands (currently only IR-based up/down available)
 - Sound mode presets beyond preset names
-- Detailed status information beyond basic on/off and input source
+- More detailed status information beyond basic on/off and input source
+- Integration with the individual speaker switches in the main UI (speaker switches are available but not exposed in the default dashboard)
 
 ## Current Limitations
 
