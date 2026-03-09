@@ -1,5 +1,9 @@
 # Realiser A16 Speaker Grid Custom Card
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/benzman/realiser-a16-ha/main/assets/logo-realiser-a16.svg" alt="Realiser A16 Logo" width="80"/>
+</p>
+
 Ein benutzerdefiniertes Home Assistant Lovelace Card zur Anzeige und Steuerung Ihrer Realiser A16 Lautsprecher in einer Grid-Ansicht, ähnlich wie die Beispiel-Weboberfläche.
 
 ## Features

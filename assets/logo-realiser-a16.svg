@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <!-- Realiser A16 Logo - Variante 2: Minimalist mit A16 und Sound Waves -->
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2E7D32"/>
+      <stop offset="100%" style="stop-color:#1B5E20"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Circle background -->
+  <circle cx="60" cy="60" r="55" fill="url(#grad)"/>
+  
+  <!-- Speaker cone -->
+  <path d="M45 35 L45 85 Q45 95 60 95 Q75 95 75 85 L75 35 Z" 
+        fill="none" stroke="white" stroke-width="3"/>
+  
+  <!-- Speaker inner circle -->
+  <circle cx="60" cy="60" r="12" fill="none" stroke="white" stroke-width="2"/>
+  <circle cx="60" cy="60" r="4" fill="white"/>
+  
+  <!-- Sound waves -->
+  <path d="M82 45 Q95 60 82 75" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M78 38 Q98 60 78 82" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+  <path d="M74 32 Q100 60 74 88" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/>
+  
+  <!-- Text -->
+  <text x="60" y="54" font-family="Arial Black, sans-serif" font-size="18" font-weight="900" 
+        fill="white" text-anchor="middle">A16</text>
+</svg>

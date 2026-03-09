@@ -1,6 +1,10 @@
 # Realiser A16 Home Assistant Integration
 
-⚠️ **Under Construction** ⚠️
+<p align="center">
+  <img src="https://raw.githubusercontent.com/benzman/realiser-a16-ha/main/assets/logo-realiser-a16.svg" alt="Realiser A16 Logo" width="120"/>
+</p>
+
+⚡ **Under Construction** ⚡
 
 This integration is still in active development and is not yet ready for production use. Some features are incomplete, experimental, or may not work as expected. You may encounter bugs or unexpected behavior. This integration is provided "as-is" and the API/behavior may change as development continues.
 
