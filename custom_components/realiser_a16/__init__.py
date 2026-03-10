@@ -278,7 +278,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.services.async_register(DOMAIN, "refresh_speakers", async_refresh_speakers)
 
     await hass.config_entries.async_forward_entry_setups(
-        entry, ["media_player", "sensor", "switch", "select"]
+        entry, ["media_player", "sensor", "switch", "select", "button"]
     )
 
     return True
@@ -286,7 +286,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    platforms = ["media_player", "sensor", "switch", "select"]
+    platforms = ["media_player", "sensor", "switch", "select", "button"]
     unload_ok = await hass.config_entries.async_unload_platforms(entry, platforms)
 
     if unload_ok and entry.entry_id in hass.data.get(DOMAIN, {}):
