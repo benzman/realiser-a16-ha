@@ -176,22 +176,39 @@ class RealiserSpeakerCard extends HTMLElement {
     header.className = 'realiser-header';
     header.innerHTML = `
       <div class="realiser-title">${this._title}</div>
-      <div class="realiser-mode">Mode: ${this._mode}</div>
-      <div class="realiser-actions">
-        <button class="realiser-visibility-btn">Visibility</button>
-        <button class="realiser-refresh-btn">Refresh</button>
-      </div>
+      <div class="realiser-mode">Mode: <span id="mode-display">${this._mode}</span></div>
     `;
     container.appendChild(header);
 
-    // Add event listeners for buttons
-    const visibilityBtn = header.querySelector('.realiser-visibility-btn');
-    visibilityBtn.addEventListener('click', () => this._refreshVisibility());
+    // Add speaker status button below header
+    const buttonRow = document.createElement('div');
+    buttonRow.className = 'realiser-button-row';
+    buttonRow.innerHTML = `
+      <button class="realiser-status-btn">Get Speaker Status</button>
+    `;
+    container.appendChild(buttonRow);
 
-    const refreshBtn = header.querySelector('.realiser-refresh-btn');
-    refreshBtn.addEventListener('click', () => {
+    const statusBtn = buttonRow.querySelector('.realiser-status-btn');
+    statusBtn.addEventListener('click', () => {
       if (this._hass) {
-        this._hass.callService('realiser_a16', 'refresh_speakers');
+        // Show loading feedback
+        statusBtn.textContent = 'Loading...';
+        statusBtn.disabled = true;
+
+        this._hass.callService('realiser_a16', 'refresh_speakers')
+          .then(() => {
+            // Button returns to normal after a short delay
+            setTimeout(() => {
+              statusBtn.textContent = 'Get Speaker Status';
+              statusBtn.disabled = false;
+            }, 500);
+          })
+          .catch(err => {
+            console.error('Failed to get speaker status:', err);
+            statusBtn.textContent = 'Get Speaker Status';
+            statusBtn.disabled = false;
+            alert('Failed to get speaker status. Check logs.');
+          });
       }
     });
 
@@ -297,39 +314,38 @@ class RealiserSpeakerCard extends HTMLElement {
         border-radius: 5px;
       }
 
-      .realiser-actions {
+      .realiser-button-row {
         display: flex;
+        justify-content: center;
+        margin-top: 15px;
         gap: 10px;
       }
 
-      .realiser-visibility-btn {
-        padding: 5px 15px;
-        font-size: 12px;
-        border: none;
-        border-radius: 5px;
-        background-color: #FF9800;
-        color: white;
-        cursor: pointer;
-        transition: background-color 0.3s ease;
-      }
-
-      .realiser-visibility-btn:hover {
-        background-color: #F57C00;
-      }
-
-      .realiser-refresh-btn {
-        padding: 5px 15px;
-        font-size: 12px;
+      .realiser-status-btn {
+        padding: 10px 20px;
+        font-size: 14px;
+        font-weight: bold;
         border: none;
         border-radius: 5px;
         background-color: #2196F3;
         color: white;
         cursor: pointer;
-        transition: background-color 0.3s ease;
+        transition: background-color 0.3s ease, transform 0.1s ease;
       }
 
-      .realiser-refresh-btn:hover {
+      .realiser-status-btn:hover {
         background-color: #0b7dda;
+        transform: scale(1.05);
+      }
+
+      .realiser-status-btn:active {
+        transform: scale(0.95);
+      }
+
+      .realiser-status-btn:disabled {
+        background-color: #ccc;
+        cursor: not-allowed;
+        transform: none;
       }
 
       .realiser-grid-container {
