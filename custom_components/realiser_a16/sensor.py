@@ -19,6 +19,7 @@ VOLUME_MIN = RealiserA16Hex.VOLUME_MIN  # 27
 VOLUME_MAX = RealiserA16Hex.VOLUME_MAX  # 99
 
 # User A status key sensors: (label, status dict key)
+# All keys that can appear in the A16 User A info response (0x80)
 _USER_A_SENSORS = [
     ("User A Name", "AUR"),
     ("User A Preset", "PA"),
@@ -29,6 +30,7 @@ _USER_A_SENSORS = [
     ("User A Speaker Config", "ASPKR"),
     ("User A HPEQ File", "AQFILE"),
     ("User A HPEQ Subject", "AQNAME"),
+    ("User A HPEQ Date", "AQDATE"),
     ("User A HPEQ Type", "AQTYPE"),
     ("User A HPEQ Model", "AQMOD"),
     ("User A Tactile", "ATACT"),
@@ -39,18 +41,22 @@ _USER_A_SENSORS = [
     ("User A HT Mode", "HTMODE"),
     ("User A Legacy", "LEG"),
     ("User A User Mode", "USER"),
+    ("User A Preset Name", "AQNAME"),  # duplicate with HPEQ Subject, kept for clarity
 ]
 
 # User B status key sensors: (label, status dict key)
+# All keys that can appear in the A16 User B info response (0xA0)
 _USER_B_SENSORS = [
     ("User B Name", "BUR"),
     ("User B Preset", "PB"),
     ("User B Volume", "VB"),
+    ("User B Tri-Level", "TRI"),
     ("User B Room", "BROOM"),
     ("User B Subject", "BNAME"),
     ("User B Speaker Config", "BSPKR"),
     ("User B HPEQ File", "BQFILE"),
     ("User B HPEQ Subject", "BQNAME"),
+    ("User B HPEQ Date", "BQDATE"),
     ("User B HPEQ Type", "BQTYPE"),
     ("User B HPEQ Model", "BQMOD"),
     ("User B Tactile", "BTACT"),
