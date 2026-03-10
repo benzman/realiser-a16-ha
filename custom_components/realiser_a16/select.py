@@ -118,9 +118,7 @@ class RealiserA16InputSelect(SelectEntity):
         await self.coordinator.hass.async_add_executor_job(
             self.coordinator.send_command, input_cmd
         )
-
-        # Request immediate refresh to update state
-        await self.coordinator.async_request_refresh()
+        # No full refresh - source change will be picked up on next poll
 
     async def async_added_to_hass(self) -> None:
         """Register update listener."""
@@ -263,7 +261,7 @@ class RealiserA16PresetSelect(SelectEntity):
         await self.coordinator.hass.async_add_executor_job(
             self.coordinator.send_command, cmd
         )
-        await self.coordinator.async_request_refresh()
+        # No full refresh - preset change will be picked up on next poll
 
     async def async_added_to_hass(self) -> None:
         """Register update listener."""

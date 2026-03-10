@@ -145,6 +145,7 @@ class RealiserA16Zone(MediaPlayerEntity):
         await self.hass.async_add_executor_job(
             self.coordinator.send_command, RealiserA16Hex.CMD_POWER_ON
         )
+        # Full refresh after power change
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self) -> None:
@@ -152,6 +153,7 @@ class RealiserA16Zone(MediaPlayerEntity):
         await self.hass.async_add_executor_job(
             self.coordinator.send_command, RealiserA16Hex.CMD_POWER_OFF
         )
+        # Full refresh after power change
         await self.coordinator.async_request_refresh()
 
     async def async_volume_up(self) -> None:
@@ -162,7 +164,7 @@ class RealiserA16Zone(MediaPlayerEntity):
             else RealiserA16Hex.CMD_VOL_B_UP
         )
         await self.hass.async_add_executor_job(self.coordinator.send_command, cmd)
-        await self.coordinator.async_request_refresh()
+        # No full refresh - volume change is local, will be updated on next poll
 
     async def async_volume_down(self) -> None:
         """Decrease volume by one step."""
@@ -172,7 +174,7 @@ class RealiserA16Zone(MediaPlayerEntity):
             else RealiserA16Hex.CMD_VOL_B_DN
         )
         await self.hass.async_add_executor_job(self.coordinator.send_command, cmd)
-        await self.coordinator.async_request_refresh()
+        # No full refresh
 
     async def async_mute_volume(self, mute: bool) -> None:
         """Mute/unmute (toggle - the A16 toggles on each MUTE command)."""
@@ -180,7 +182,7 @@ class RealiserA16Zone(MediaPlayerEntity):
             RealiserA16Hex.CMD_MUTE_A if self.zone == "A" else RealiserA16Hex.CMD_MUTE_B
         )
         await self.hass.async_add_executor_job(self.coordinator.send_command, cmd)
-        await self.coordinator.async_request_refresh()
+        # No full refresh - will be updated on next poll
 
     async def async_select_source(self, source: str) -> None:
         """Select input source."""
@@ -201,7 +203,7 @@ class RealiserA16Zone(MediaPlayerEntity):
             _LOGGER.warning("Unknown source: %s", source)
             return
         await self.hass.async_add_executor_job(self.coordinator.send_command, cmd)
-        await self.coordinator.async_request_refresh()
+        # Source change triggers internal update, will be picked up on next poll
 
     async def async_added_to_hass(self) -> None:
         """Register update listener."""
