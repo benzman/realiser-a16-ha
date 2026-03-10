@@ -167,6 +167,56 @@ class RealiserA16Hex:
     CMD_LOAD_PRESET_B15 = 0x9E
     CMD_LOAD_PRESET_B16 = 0x9F
 
+    # Response patterns for filtering async messages
+    # Format: {command_code: [(pattern_regex, field_name)]}
+    RESPONSE_PATTERNS: dict = {
+        0xAE: [(r"V\d+", "visibility")],  # Speaker Visibility: V00,V01,...
+        0xAF: [(r"A\d+", "active"), (r"ALL=", "mode")],  # Speaker Status
+        0x2E: [(r"PWR=", "power")],  # Power Status
+        0x45: [(r"STATUS=", "status")],  # General Status
+        0x64: [(r"A16FW=", "version")],  # Version info
+        0x80: [
+            (r"VA=", "volume_a"),
+            (r"ASPKR=", "speaker_a"),
+            (r"AUR=", "user_a"),
+            (r"ANAME=", "name_a"),
+            (r"AQFILE=", "eqfile_a"),
+        ],  # User A info
+        0xA0: [
+            (r"VB=", "volume_b"),
+            (r"BSPKR=", "speaker_b"),
+            (r"BUR=", "user_b"),
+            (r"BNAME=", "name_b"),
+            (r"BQFILE=", "eqfile_b"),
+        ],  # User B info
+        0x37: [(r"ACH\d+=", "assign_a"), (r"BCH\d+=", "assign_b")],  # Assignments
+    }
+
+    # Async patterns that should be filtered out
+    ASYNC_PATTERNS = [
+        r"^AUR=",
+        r"^PA=",
+        r"^VA=",
+        r"^AROOM=",
+        r"^ANAME=",
+        r"^ASPKR=",
+        r"^AQFILE=",
+        r"^AQNAME=",
+        r"^AQDATE=",
+        r"^AQTYPE=",
+        r"^AQMOD=",
+        r"^ATACT=",
+        r"^IN=",
+        r"^DEC=",
+        r"^LM=",
+        r"^UMIX=",
+        r"^HTMODE=",
+        r"^LEG=",
+        r"^USER=",
+        r"^BUR=",
+        r"^PB=",
+    ]
+
     # Volume range per PDF
     VOLUME_MIN = 27
     VOLUME_MAX = 99
@@ -211,8 +261,11 @@ class RealiserA16Hex:
             code: Hex command code (e.g. 0x37 or "37")
 
         Returns:
-            Response string without null terminator
+            Response string filtered to only matching responses
         """
+        import re
+        import time
+
         if not self._sock:
             raise RuntimeError("Not connected. Call connect() first.")
 
@@ -226,22 +279,76 @@ class RealiserA16Hex:
         _LOGGER.debug("Sending: %s", repr(cmd))
         self._sock.sendall(cmd.encode("ascii"))
 
+        # Collect ALL responses across multiple TCP packets
+        # A16 sends responses in bursts: first async user A data, then command-specific data
         resp = b""
-        try:
-            while True:
+        start_time = time.time()
+        recv_count = 0
+        max_recv = 10  # Maximum number of recv calls
+        while recv_count < max_recv and time.time() - start_time < 4.0:
+            try:
+                self._sock.settimeout(1.0)
                 chunk = self._sock.recv(4096)
-                if not chunk:
+                if chunk:
+                    recv_count += 1
+                    resp += chunk
+                    # After each chunk with data, wait a bit for potential follow-up
+                    time.sleep(0.15)
+                else:
                     break
-                resp += chunk
-                if b"\x00" in chunk:
-                    break
-        except socket.timeout:
-            _LOGGER.debug("Receive timeout after %d bytes", len(resp))
+            except socket.timeout:
+                # Timeout means no more data coming
+                break
 
-        if resp.endswith(b"\x00"):
-            resp = resp[:-1]
+        # Trim to last null terminator if present
+        if b"\x00" in resp:
+            last_null = resp.rfind(b"\x00")
+            resp = resp[:last_null]
 
-        return resp.decode("ascii", errors="ignore")
+        full_response = resp.decode("ascii", errors="ignore")
+
+        # Filter out async messages - collect all lines that match command patterns
+        code_int = int(code, 16) if isinstance(code, str) else code
+        patterns = self.RESPONSE_PATTERNS.get(code_int, [])
+
+        if patterns:
+            lines = full_response.split("\x00")
+            filtered_lines = []
+
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+
+                # Check if line is an async pattern - skip it
+                is_async = False
+                for async_pat in self.ASYNC_PATTERNS:
+                    if re.match(async_pat, line):
+                        is_async = True
+                        break
+
+                if is_async:
+                    continue
+
+                # Check if line matches expected pattern for this command
+                matched = False
+                for pattern, _ in patterns:
+                    if re.search(pattern, line):
+                        matched = True
+                        break
+
+                if matched:
+                    filtered_lines.append(line)
+
+            # Return filtered lines only (without async data)
+            if filtered_lines:
+                _LOGGER.debug(
+                    "Returning %d matching responses",
+                    len(filtered_lines),
+                )
+                return "\x00".join(filtered_lines)
+
+        return full_response
 
     # Convenience methods - Power
     def power_on(self) -> str:

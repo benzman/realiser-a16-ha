@@ -5,12 +5,11 @@ import time
 import sys
 import os
 
-# Determine the path to custom_components
+# Add current directory to path to import realiser_a16_hex (standalone version)
 script_dir = os.path.dirname(os.path.abspath(__file__))
-custom_components_path = os.path.join(script_dir, "custom_components")
-sys.path.insert(0, custom_components_path)
+sys.path.insert(0, script_dir)
 
-from realiser_a16.realiser_a16_hex import RealiserA16Hex
+from realiser_a16_hex import RealiserA16Hex
 
 SPEAKER_NAMES = RealiserA16Hex.SPEAKER_NAMES
 

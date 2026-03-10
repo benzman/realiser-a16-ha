@@ -58,6 +58,15 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
         _LOGGER.debug("Connecting to %s:%s", self.host, self.port)
         self._client = RealiserA16Hex(self.host, self.port, timeout=self.timeout)
         self._client.connect()
+
+        # Wake-up: A16 requires a command to be sent first after new connection
+        # Otherwise commands may return incomplete data
+        try:
+            self._client.send(0x2E)  # Power status - quick wake-up
+            _LOGGER.debug("Wake-up command sent")
+        except Exception as err:
+            _LOGGER.warning("Wake-up command failed: %s", err)
+
         _LOGGER.info("Connected to Realiser A16 at %s:%s", self.host, self.port)
 
     def _disconnect(self) -> None:
@@ -100,14 +109,13 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
             raw_assign = self._send(0x37)
             _LOGGER.debug("0x37 Assignments: %s", raw_assign[:60])
 
-            # Speaker status (0xAF) - contains both mode and active speakers
-            # Note: The response may contain multiple blocks, we need to read all
+            # Speaker visibility (0xAE) - contains V00, V01, etc.
+            raw_vis = self._send(0xAE)
+            _LOGGER.debug("0xae Speaker visibility: %s", raw_vis[:200])
+
+            # Speaker status (0xAF) - contains ALL=SOLO/MUTE, A00, A01, etc.
             raw_act = self._send(0xAF)
             _LOGGER.debug("0xaf Speaker status: %s", raw_act[:200])
-
-            # For now, use raw_act for both visibility and status
-            # The _parse_speakers method now extracts both from the 0xAF response
-            raw_vis = raw_act  # Will be used differently in new parsing
 
             status = self._parse_kv(raw_a)
             status.update(self._parse_kv(raw_b))  # VB, BUR, etc.
@@ -139,20 +147,18 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
         Returns parsed speakers dict and updates coordinator.data["speakers"].
         """
         try:
+            # Speaker visibility (0xAE)
             raw_vis = self._send(0xAE)
-            _LOGGER.debug("0xae Speaker visibility: %s", raw_vis[:120])
+            _LOGGER.debug("0xae Speaker visibility: %s", raw_vis[:200])
+
+            # Speaker status (0xAF) - contains ALL=SOLO/MUTE and active speakers
             raw_act = self._send(0xAF)
-            _LOGGER.debug("0xaf Speaker status: %s", raw_act[:120])
+            _LOGGER.debug("0xaf Speaker status: %s", raw_act[:200])
 
             speakers = self._parse_speakers(raw_vis, raw_act)
 
-            # Also refresh mode from assignments
-            raw_assign = self._send(0x37)
-            assignments = self._parse_assignments(raw_assign)
-
             if self.data:
                 self.data["speakers"] = speakers
-                self.data["assignments"] = assignments
 
             return speakers
 
@@ -184,58 +190,51 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
         return result
 
     def _parse_speakers(self, raw_vis: str, raw_act: str) -> Dict[str, Any]:
-        """Parse speaker data from 0xAF response.
+        """Parse speaker data from 0xAE (visibility) and 0xAF (status) responses.
 
-        The response contains multiple null-terminated blocks:
-        - One block contains "ALL=SOLO" or "ALL=MUTE" (the mode)
-        - Other blocks contain "A00", "A01", etc. (active speaker IDs)
-        - Followed by user info blocks
+        0xAE response format:
+            V00,V01,V02,... (visible speaker indices, 0-based)
+
+        0xAF response format:
+            ALL=SOLO|ALL=MUTE (the mode)
+            A00,A01,A02,... (active speaker indices, 0-based)
 
         Returns:
-            Dict keyed by speaker ID (int 1-50):
+            Dict keyed by speaker ID (1-50):
                 {
                     1: {"name": "L",  "visible": True,  "state": "active"},
                     2: {"name": "R",  "visible": True,  "state": "mute"},
                     ...
                 }
         """
-        # Use raw_act since it contains the speaker status
-        # (0xAF response has both mode and active speakers)
-
-        # Split response into null-terminated blocks
-        blocks = raw_act.split("\x00")
-
+        visible_ids = set()
+        active_ids = set()
         mode = None
-        active_speaker_ids = set()
 
-        # Search all blocks for speaker data
-        for block in blocks:
-            block = block.strip()
-            if not block:
-                continue
+        # Parse visibility from 0xAE response (V00, V01, etc.)
+        if raw_vis:
+            for token in raw_vis.split("\x00"):
+                token = token.strip()
+                if token.startswith("V") and len(token) >= 2:
+                    try:
+                        idx = int(token[1:3])
+                        visible_ids.add(idx)
+                    except (ValueError, IndexError):
+                        pass
 
-            # Split block into tokens
-            tokens = (
-                block.replace("|", " ").replace("\r", " ").replace("\n", " ").split()
-            )
-
-            for token in tokens:
+        # Parse status from 0xAF response (A00, ALL=, etc.)
+        if raw_act:
+            for token in raw_act.split("\x00"):
                 token = token.strip()
                 if not token:
                     continue
 
-                # Check for mode (ALL=SOLO or ALL=MUTE)
                 if token.startswith("ALL="):
-                    mode = token.split("=")[1]
-                # Check for speaker ID (A00, A01, etc. - just 2 digits)
+                    mode = token.split("=", 1)[1]
                 elif token.startswith("A") and len(token) >= 2:
                     try:
-                        num_part = token[1:3]
-                        if num_part.isdigit():
-                            # Speaker IDs in response are 0-based
-                            # Convert to 1-based for our SPEAKER_NAMES
-                            speaker_id = int(num_part)
-                            active_speaker_ids.add(speaker_id)
+                        idx = int(token[1:3])
+                        active_ids.add(idx)
                     except (ValueError, IndexError):
                         pass
 
@@ -243,23 +242,21 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
         result = {}
         for speaker_id in range(1, 51):
             name = RealiserA16Hex.SPEAKER_NAMES.get(speaker_id, f"Spk{speaker_id}")
-            # Check if this speaker is in the active list
-            # Note: Our IDs are 1-based, response IDs are 0-based
-            is_active = (speaker_id - 1) in active_speaker_ids
-
-            # For now, assume all configured speakers are "visible"
-            # Visibility would require a separate command (0xAE)
-            # For now, mark all as visible if they're active
-            visible = is_active
+            # Speaker IDs in response are 0-based, we use 1-based
+            is_visible = (speaker_id - 1) in visible_ids
+            is_active = (speaker_id - 1) in active_ids
 
             result[speaker_id] = {
                 "name": name,
-                "visible": visible,
+                "visible": is_visible,
                 "state": "active" if is_active else "mute",
             }
 
         _LOGGER.debug(
-            "Parsed speakers - mode: %s, active: %s", mode, active_speaker_ids
+            "Parsed speakers - mode: %s, visible: %s, active: %s",
+            mode,
+            visible_ids,
+            active_ids,
         )
 
         return result
