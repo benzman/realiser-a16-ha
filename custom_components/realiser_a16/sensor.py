@@ -75,6 +75,7 @@ async def async_setup_entry(
         RealiserA16PresetNameSensor(coordinator, "A"),
         RealiserA16PresetNameSensor(coordinator, "B"),
         RealiserA16StatusSensor(coordinator),
+        RealiserA16DiagnosticsSensor(coordinator),
         RealiserA16SpeakerSensor(coordinator),
     ]
 
@@ -240,6 +241,125 @@ class RealiserA16StatusSensor(SensorEntity):
             "port": self.coordinator.port,
             "last_update_success": self.coordinator.last_update_success,
         }
+
+    async def async_added_to_hass(self) -> None:
+        """Register update listener."""
+        self.async_on_remove(
+            self.coordinator.async_add_listener(self.async_write_ha_state)
+        )
+
+
+class RealiserA16DiagnosticsSensor(SensorEntity):
+    """Comprehensive diagnostic sensor showing all device data in one place.
+
+    native_value = "connected" or "disconnected"
+    extra_state_attributes = complete breakdown of all device data:
+        - power, speaker_mode
+        - user_a (all fields)
+        - user_b (all fields)
+        - assignments (ach, bch)
+        - visible_speakers, active_speakers
+        - firmware info
+    """
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:diagnostics"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False  # Opt-in only
+
+    def __init__(self, coordinator: RealiserA16DataUpdateCoordinator) -> None:
+        """Initialize the diagnostics sensor."""
+        self.coordinator = coordinator
+        self._attr_unique_id = f"{coordinator.host}_diagnostics"
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, coordinator.host)},
+            "name": f"Realiser A16 ({coordinator.host})",
+            "manufacturer": "Smyth Research",
+            "model": "Realiser A16",
+        }
+
+    @property
+    def name(self) -> str:
+        return "Diagnostics"
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.last_update_success
+
+    @property
+    def native_value(self) -> str:
+        if not self.coordinator.last_update_success:
+            return "disconnected"
+        return "connected"
+
+    @property
+    def extra_state_attributes(self) -> Dict[str, Any]:
+        if not self.coordinator.data:
+            return {}
+
+        data = self.coordinator.data
+        status = data.get("status", {})
+
+        # Build comprehensive diagnostics dict
+        attrs: Dict[str, Any] = {}
+
+        # Power & Mode
+        attrs["power"] = status.get("PWR")
+        attrs["speaker_mode"] = data.get("speaker_mode")
+
+        # User A (all fields)
+        user_a = {k: v for k, v in status.items() if k not in ("PWR",)}
+        if user_a:
+            attrs["user_a"] = user_a
+
+        # User B
+        user_b = {
+            k: v
+            for k, v in status.items()
+            if k
+            in (
+                "BUR",
+                "PB",
+                "VB",
+                "BROOM",
+                "BNAME",
+                "BSPKR",
+                "BQFILE",
+                "BQNAME",
+                "BQTYPE",
+                "BQMOD",
+                "BTACT",
+            )
+        }
+        if user_b:
+            attrs["user_b"] = user_b
+
+        # Assignments
+        assignments = data.get("assignments", {})
+        if assignments.get("ach"):
+            attrs["assignments_ach"] = {
+                str(k): v for k, v in assignments.get("ach", {}).items()
+            }
+        if assignments.get("bch"):
+            attrs["assignments_bch"] = {
+                str(k): v for k, v in assignments.get("bch", {}).items()
+            }
+
+        # Speakers
+        speakers = data.get("speakers", {})
+        visible = [s["name"] for s in speakers.values() if s.get("visible")]
+        active = [s["name"] for s in speakers.values() if s.get("state") == "active"]
+        if visible:
+            attrs["visible_speakers"] = visible
+        if active:
+            attrs["active_speakers"] = active
+
+        # Firmware
+        firmware = data.get("firmware", {})
+        if firmware:
+            attrs["firmware"] = firmware
+
+        return attrs
 
     async def async_added_to_hass(self) -> None:
         """Register update listener."""
