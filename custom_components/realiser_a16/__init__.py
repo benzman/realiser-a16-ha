@@ -6,7 +6,8 @@ import socket
 from datetime import timedelta
 from typing import Any, Dict, Optional
 
-from homeassistant.config_entries import ConfigEntry, ServiceCall
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.const import CONF_HOST, CONF_PORT, CONF_TIMEOUT
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed

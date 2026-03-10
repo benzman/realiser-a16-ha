@@ -19,11 +19,15 @@ async def async_setup_entry(
     """Set up button entities."""
     coordinator: RealiserA16DataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
 
-    async_add_entities(
-        [
-            RealiserA16RefreshSpeakersButton(coordinator),
-        ]
-    )
+    try:
+        async_add_entities(
+            [
+                RealiserA16RefreshSpeakersButton(coordinator),
+            ]
+        )
+    except Exception as err:
+        _LOGGER.exception("Failed to setup button entities: %s", err)
+        raise
 
 
 class RealiserA16RefreshSpeakersButton(ButtonEntity):
