@@ -58,16 +58,25 @@ class RealiserSpeakerCard extends HTMLElement {
     });
   }
 
-  _toggleAll() {
-    if (!this._hass) return;
+   _toggleAll() {
+     if (!this._hass) return;
 
-    const entityId = 'switch.realiser_a16_all_solo';
-    this._hass.callService('homeassistant', 'toggle', {
-      entity_id: entityId,
-    }).catch(err => {
-      console.error('Failed to toggle all speakers:', err);
-    });
-  }
+     const entityId = 'switch.realiser_a16_all_solo';
+     this._hass.callService('homeassistant', 'toggle', {
+       entity_id: entityId,
+     }).catch(err => {
+       console.error('Failed to toggle all speakers:', err);
+     });
+   }
+
+   _refreshVisibility() {
+     if (!this._hass) return;
+
+     // Call the refresh_speakers service to get latest visibility and status
+     this._hass.callService('realiser_a16', 'refresh_speakers').catch(err => {
+       console.error('Failed to refresh speaker visibility:', err);
+     });
+   }
 
   _getSpeakerColor(speakerId) {
     // Speaker types based on ID - following the same layout as example
@@ -150,17 +159,23 @@ class RealiserSpeakerCard extends HTMLElement {
     const container = document.createElement('div');
     container.className = 'realiser-speaker-container';
 
-    // Header with title, mode and refresh button
+    // Header with title, mode and action buttons
     const header = document.createElement('div');
     header.className = 'realiser-header';
     header.innerHTML = `
       <div class="realiser-title">Speaker Grid</div>
       <div class="realiser-mode">Mode: ${this._mode}</div>
-      <button class="realiser-refresh-btn">Refresh</button>
+      <div class="realiser-actions">
+        <button class="realiser-visibility-btn">Visibility</button>
+        <button class="realiser-refresh-btn">Refresh</button>
+      </div>
     `;
     container.appendChild(header);
 
-    // Add refresh button event listener
+    // Add event listeners for buttons
+    const visibilityBtn = header.querySelector('.realiser-visibility-btn');
+    visibilityBtn.addEventListener('click', () => this._refreshVisibility());
+
     const refreshBtn = header.querySelector('.realiser-refresh-btn');
     refreshBtn.addEventListener('click', () => {
       if (this._hass) {
@@ -270,6 +285,26 @@ class RealiserSpeakerCard extends HTMLElement {
         border-radius: 5px;
       }
 
+      .realiser-actions {
+        display: flex;
+        gap: 10px;
+      }
+
+      .realiser-visibility-btn {
+        padding: 5px 15px;
+        font-size: 12px;
+        border: none;
+        border-radius: 5px;
+        background-color: #FF9800;
+        color: white;
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+      }
+
+      .realiser-visibility-btn:hover {
+        background-color: #F57C00;
+      }
+
       .realiser-refresh-btn {
         padding: 5px 15px;
         font-size: 12px;
@@ -279,7 +314,6 @@ class RealiserSpeakerCard extends HTMLElement {
         color: white;
         cursor: pointer;
         transition: background-color 0.3s ease;
-        margin-left: 10px;
       }
 
       .realiser-refresh-btn:hover {
