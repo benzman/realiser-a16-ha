@@ -103,9 +103,13 @@ class RealiserA16ConfigFlow(config_entries.ConfigFlow, domain="realiser_a16"):
                 client = RealiserA16Hex(self._host, self._port, timeout=self._timeout)
                 _LOGGER.debug("Client created, connecting...")
                 client.connect()
-                _LOGGER.debug("Connected! Sending User A Info command (0x80)...")
-                resp = client.send(0x80)
-                _LOGGER.debug("Got response: %s", repr(resp[:100]) if resp else "EMPTY")
+                _LOGGER.debug("Connected! Sending power status command (0x2E)...")
+                resp = client.send(0x2E)
+                _LOGGER.debug(
+                    "Got response: power=%s user_a=%s",
+                    resp.power,
+                    list(resp.user_a.keys()),
+                )
                 client.close()
                 return resp
             except Exception as e:
@@ -114,7 +118,8 @@ class RealiserA16ConfigFlow(config_entries.ConfigFlow, domain="realiser_a16"):
 
         result = await self.hass.async_add_executor_job(sync_test)
 
-        if not result:
+        # A valid connection returns either a power state or User A info
+        if not result.power and not result.user_a:
             _LOGGER.error("Empty response received from device")
             raise Exception("No valid response from device")
 

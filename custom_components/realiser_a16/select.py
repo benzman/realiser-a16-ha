@@ -159,11 +159,10 @@ class RealiserA16ModeSelect(SelectEntity):
 
     @property
     def current_option(self) -> str | None:
-        """Return current SOLO/MUTE mode from assignments."""
+        """Return current SOLO/MUTE mode."""
         if not self.coordinator.data:
             return None
-        assignments = self.coordinator.data.get("assignments", {})
-        mode = assignments.get("global", {}).get("ALL", "").upper()
+        mode = (self.coordinator.data.get("speaker_mode") or "").upper()
         if mode in self._attr_options:
             return mode
         return None

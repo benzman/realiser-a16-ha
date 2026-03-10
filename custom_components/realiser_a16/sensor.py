@@ -18,16 +18,6 @@ _LOGGER = logging.getLogger(__name__)
 VOLUME_MIN = RealiserA16Hex.VOLUME_MIN  # 27
 VOLUME_MAX = RealiserA16Hex.VOLUME_MAX  # 99
 
-# Raw response sensors: (label, data["raw"] key)
-_RAW_SENSORS = [
-    ("Raw 0x80 User A", "0x80"),
-    ("Raw 0xA0 User B", "0xa0"),
-    ("Raw 0x2E Power", "0x2e"),
-    ("Raw 0x37 Assignments", "0x37"),
-    ("Raw 0xAE Spk Visibility", "0xae"),
-    ("Raw 0xAF Spk Status", "0xaf"),
-]
-
 # User A status key sensors: (label, status dict key)
 _USER_A_SENSORS = [
     ("User A Name", "AUR"),
@@ -80,11 +70,6 @@ async def async_setup_entry(
         RealiserA16PresetNameSensor(coordinator, "B"),
         RealiserA16StatusSensor(coordinator),
         RealiserA16SpeakerSensor(coordinator),
-    ]
-
-    # Raw response sensors (disabled by default)
-    sensors += [
-        RealiserA16RawSensor(coordinator, label, key) for label, key in _RAW_SENSORS
     ]
 
     # User A / User B granular info sensors (disabled by default)
@@ -305,8 +290,7 @@ class RealiserA16SpeakerSensor(SensorEntity):
         if not self.coordinator.data:
             return {}
         speakers = self.coordinator.data.get("speakers", {})
-        assignments = self.coordinator.data.get("assignments", {})
-        mode = assignments.get("global", {}).get("ALL", "UNKNOWN")
+        mode = self.coordinator.data.get("speaker_mode") or "UNKNOWN"
 
         # Serialise speakers with str keys (JSON-safe)
         speakers_serialized = {str(spk_id): info for spk_id, info in speakers.items()}
@@ -314,77 +298,6 @@ class RealiserA16SpeakerSensor(SensorEntity):
             "mode": mode,
             "speakers": speakers_serialized,
         }
-
-    async def async_added_to_hass(self) -> None:
-        """Register update listener."""
-        self.async_on_remove(
-            self.coordinator.async_add_listener(self.async_write_ha_state)
-        )
-
-
-class RealiserA16RawSensor(SensorEntity):
-    """Diagnostic sensor exposing a raw device response string.
-
-    native_value = first 80 chars (quick glance in entity list).
-    extra_state_attributes["raw"] = full response string.
-    Disabled by default — enable in entity registry for debugging.
-    """
-
-    _attr_has_entity_name = True
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_icon = "mdi:code-braces"
-    _attr_entity_registry_enabled_default = False
-
-    def __init__(
-        self,
-        coordinator: RealiserA16DataUpdateCoordinator,
-        label: str,
-        raw_key: str,
-    ) -> None:
-        """Initialize the raw sensor."""
-        self.coordinator = coordinator
-        self._label = label
-        self._raw_key = raw_key
-        slug = raw_key.replace("0x", "").replace("0X", "")
-        self._attr_unique_id = f"{coordinator.host}_raw_{slug}"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, coordinator.host)},
-            "name": f"Realiser A16 ({coordinator.host})",
-            "manufacturer": "Smyth Research",
-            "model": "Realiser A16",
-        }
-
-    @property
-    def name(self) -> str:
-        return self._label
-
-    @property
-    def available(self) -> bool:
-        return self.coordinator.last_update_success
-
-    @property
-    def native_value(self) -> Optional[str]:
-        raw = self._get_raw()
-        if raw is None:
-            return None
-        # Replace control chars for display
-        preview = raw.replace("\x00", "·").replace("\r", "").replace("\n", " ")
-        return preview[:80] if len(preview) > 80 else preview
-
-    @property
-    def extra_state_attributes(self) -> Dict[str, Any]:
-        raw = self._get_raw()
-        if raw is None:
-            return {}
-        return {
-            "raw": raw.replace("\x00", "·").replace("\r", ""),
-            "length": len(raw),
-        }
-
-    def _get_raw(self) -> Optional[str]:
-        if not self.coordinator.data:
-            return None
-        return self.coordinator.data.get("raw", {}).get(self._raw_key)
 
     async def async_added_to_hass(self) -> None:
         """Register update listener."""

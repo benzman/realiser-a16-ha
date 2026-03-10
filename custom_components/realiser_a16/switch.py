@@ -111,18 +111,17 @@ class RealiserA16AllSoloSwitch(SwitchEntity):
     @property
     def is_on(self) -> bool:
         """Return true if mode is SOLO."""
-        assignments = self.coordinator.data.get("assignments", {})
-        mode = assignments.get("global", {}).get("MODE", "").upper()
-        return mode == "SOLO"
+        if not self.coordinator.data:
+            return False
+        mode = self.coordinator.data.get("speaker_mode", "")
+        return (mode or "").upper() == "SOLO"
 
     @property
     def extra_state_attributes(self) -> Dict[str, Any]:
         """Return additional state attributes."""
-        assignments = self.coordinator.data.get("assignments", {})
-        return {
-            "test_mode": assignments.get("global", {}).get("TEST", ""),
-            "all_mode": assignments.get("global", {}).get("ALL", ""),
-        }
+        if not self.coordinator.data:
+            return {}
+        return {"speaker_mode": self.coordinator.data.get("speaker_mode", "")}
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on solo mode."""

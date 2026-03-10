@@ -9,10 +9,9 @@ from typing import Any, Dict, Optional
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.const import CONF_HOST, CONF_PORT, CONF_TIMEOUT
-from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .realiser_a16_hex import RealiserA16Hex
+from .realiser_a16_hex import A16Response, RealiserA16Hex
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -28,6 +27,32 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
     Uses a persistent TCP connection. The A16 supports only one connection
     at a time and closes it after an inactivity timeout (30-250 seconds).
     We reconnect automatically when needed.
+
+    Data layout returned by _fetch_data (consumed by all platform entities):
+
+        data = {
+            "connected": bool,
+            "status": {            # flat KEY→value dict
+                # User A (from 0x80, or async with any command)
+                "AUR": "Benni", "PA": "01", "VA": "60", "IN": "HDMI-1",
+                "ASPKR": "5.1.4h", "AQNAME": "Benni", ...
+                # User B (from 0xA0)
+                "BUR": "...", "PB": "01", "VB": "55", ...
+                # Power
+                "PWR": "ON",
+            },
+            "assignments": {       # DSP channel assignments
+                "ach": {1: "L", 2: "R", ...},   # User A channels
+                "bch": {1: "L", 2: "R", ...},   # User B channels
+            },
+            "speakers": {          # per-speaker state (1-based IDs)
+                1: {"name": "L",  "visible": True,  "state": "active"},
+                2: {"name": "R",  "visible": True,  "state": "mute"},
+                ...
+            },
+            "speaker_mode": "SOLO" | "MUTE" | None,
+            "firmware": {"A16FW": "2.17 ...", "APMFW": "...", ...},
+        }
     """
 
     def __init__(
@@ -52,6 +77,10 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(seconds=update_interval),
         )
 
+    # ------------------------------------------------------------------
+    # Connection helpers
+    # ------------------------------------------------------------------
+
     def _connect(self) -> None:
         """Open a fresh TCP connection to the A16."""
         self._disconnect()
@@ -59,10 +88,10 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
         self._client = RealiserA16Hex(self.host, self.port, timeout=self.timeout)
         self._client.connect()
 
-        # Wake-up: A16 requires a command to be sent first after new connection
-        # Otherwise commands may return incomplete data
+        # Wake-up: the A16 needs at least one command after a new connection
+        # before it starts prepending async User A status to responses.
         try:
-            self._client.send(0x2E)  # Power status - quick wake-up
+            self._client.send(0x2E)
             _LOGGER.debug("Wake-up command sent")
         except Exception as err:
             _LOGGER.warning("Wake-up command failed: %s", err)
@@ -78,62 +107,84 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
                 pass
             self._client = None
 
-    def _send(self, code: int) -> str:
+    def _send(self, code: int) -> A16Response:
         """Send command, reconnecting once on failure."""
         if self._client is None:
             self._connect()
         try:
             return self._client.send(code)  # type: ignore[union-attr]
         except (OSError, socket.error) as err:
-            _LOGGER.warning("Send 0x%02x failed (%s), reconnecting...", code, err)
+            _LOGGER.warning("Send 0x%02x failed (%s), reconnecting…", code, err)
             self._disconnect()
             self._connect()
             return self._client.send(code)  # type: ignore[union-attr]
 
+    # ------------------------------------------------------------------
+    # Data fetch
+    # ------------------------------------------------------------------
+
     def _fetch_data(self) -> Dict[str, Any]:
-        """Fetch data from device using a persistent connection."""
+        """Fetch all device state with the minimum number of commands.
+
+        The A16 always returns the full User A status block together with
+        every command response.  We exploit this to gather User A data
+        "for free" alongside the commands we actually care about.
+
+        Commands used:
+            0x37  DSP assignments  → ach/bch + user_a (free)
+            0xAE  Speaker visibility → visible_speakers + user_a (free)
+            0xAF  Speaker status    → active_speakers + speaker_mode + user_a (free)
+            0xA0  User B info       → user_b (only command that returns User B)
+            0x2E  Power status      → power (fast, always last so we have PWR=)
+        """
         try:
-            # User A info (0x80): VA, AUR, IN, ASPKR, ...
-            raw_a = self._send(0x80)
-            _LOGGER.debug("0x80 User A info: %s", raw_a[:120])
+            r_assign = self._send(0x37)
+            _LOGGER.debug(
+                "0x37 ach=%d bch=%d",
+                len(r_assign.assignments["ach"]),
+                len(r_assign.assignments["bch"]),
+            )
 
-            # User B info (0xA0): VB, BUR, ...
-            raw_b = self._send(0xA0)
-            _LOGGER.debug("0xa0 User B info: %s", raw_b[:120])
+            r_vis = self._send(0xAE)
+            _LOGGER.debug("0xae visible=%s", r_vis.visible_speakers)
 
-            # Power status (0x2e)
-            raw_pwr = self._send(0x2E)
-            _LOGGER.debug("0x2e Power status: %s", raw_pwr[:60])
+            r_act = self._send(0xAF)
+            _LOGGER.debug(
+                "0xaf active=%s mode=%s", r_act.active_speakers, r_act.speaker_mode
+            )
 
-            # Speaker assignments (0x37)
-            raw_assign = self._send(0x37)
-            _LOGGER.debug("0x37 Assignments: %s", raw_assign[:60])
+            r_b = self._send(0xA0)
+            _LOGGER.debug("0xa0 user_b keys=%s", list(r_b.user_b.keys()))
 
-            # Speaker visibility (0xAE) - contains V00, V01, etc.
-            raw_vis = self._send(0xAE)
-            _LOGGER.debug("0xae Speaker visibility: %s", raw_vis[:200])
+            r_pwr = self._send(0x2E)
+            _LOGGER.debug("0x2e power=%s", r_pwr.power)
 
-            # Speaker status (0xAF) - contains ALL=SOLO/MUTE, A00, A01, etc.
-            raw_act = self._send(0xAF)
-            _LOGGER.debug("0xaf Speaker status: %s", raw_act[:200])
+            # --- Merge User A from whichever response has the most fields ---
+            # All responses carry async User A data; pick the richest one.
+            user_a = _merge_user_a(r_assign, r_vis, r_act, r_pwr)
 
-            status = self._parse_kv(raw_a)
-            status.update(self._parse_kv(raw_b))  # VB, BUR, etc.
-            status.update(self._parse_kv(raw_pwr))  # PWR
+            # --- Flat status dict for all platform entities ---
+            status: Dict[str, str] = {}
+            status.update(user_a)
+            status.update(r_b.user_b)
+            if r_pwr.power:
+                status["PWR"] = r_pwr.power
+
+            # --- Speaker mode from 0xAF (authoritative), fallback 0xAE ---
+            speaker_mode = r_act.speaker_mode or r_vis.speaker_mode
 
             return {
                 "connected": True,
                 "status": status,
-                "assignments": self._parse_assignments(raw_assign),
-                "speakers": self._parse_speakers(raw_vis, raw_act),
-                "raw": {
-                    "0x80": raw_a,
-                    "0xa0": raw_b,
-                    "0x2e": raw_pwr,
-                    "0x37": raw_assign,
-                    "0xae": raw_vis,
-                    "0xaf": raw_act,
+                "assignments": {
+                    "ach": r_assign.assignments["ach"],
+                    "bch": r_assign.assignments["bch"],
                 },
+                "speakers": _build_speaker_dict(
+                    r_vis.visible_speakers, r_act.active_speakers
+                ),
+                "speaker_mode": speaker_mode,
+                "firmware": r_pwr.firmware or r_assign.firmware,
             }
 
         except Exception as err:
@@ -142,24 +193,29 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Failed to fetch data: {err}") from err
 
     def refresh_speakers(self) -> Dict[str, Any]:
-        """Fetch speaker visibility and status on-demand (0xAE + 0xAF).
+        """Fetch speaker visibility + status on-demand (called by speaker switches).
 
-        Returns parsed speakers dict and updates coordinator.data["speakers"].
+        Returns the speakers dict and updates coordinator.data in place.
         """
         try:
-            # Speaker visibility (0xAE)
-            raw_vis = self._send(0xAE)
-            _LOGGER.debug("0xae Speaker visibility: %s", raw_vis[:200])
+            r_vis = self._send(0xAE)
+            r_act = self._send(0xAF)
 
-            # Speaker status (0xAF) - contains ALL=SOLO/MUTE and active speakers
-            raw_act = self._send(0xAF)
-            _LOGGER.debug("0xaf Speaker status: %s", raw_act[:200])
-
-            speakers = self._parse_speakers(raw_vis, raw_act)
+            speakers = _build_speaker_dict(
+                r_vis.visible_speakers, r_act.active_speakers
+            )
+            speaker_mode = r_act.speaker_mode or r_vis.speaker_mode
 
             if self.data:
                 self.data["speakers"] = speakers
+                self.data["speaker_mode"] = speaker_mode
 
+            _LOGGER.debug(
+                "refresh_speakers: visible=%s active=%s mode=%s",
+                r_vis.visible_speakers,
+                r_act.active_speakers,
+                speaker_mode,
+            )
             return speakers
 
         except Exception as err:
@@ -171,119 +227,54 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
         async with self._lock:
             return await self.hass.async_add_executor_job(self._fetch_data)
 
-    def send_command(self, code: int) -> str:
+    def send_command(self, code: int) -> A16Response:
         """Send a raw command (called from platforms via executor)."""
         return self._send(code)
 
-    # --- Parsers ---
 
-    def _parse_kv(self, raw: str) -> Dict[str, str]:
-        """Parse null-separated KEY=VALUE pairs."""
-        result: Dict[str, str] = {}
-        if not raw:
-            return result
-        for token in raw.replace("\r", "").split("\x00"):
-            token = token.strip()
-            if "=" in token:
-                k, v = token.split("=", 1)
-                result[k.strip()] = v.strip()
-        return result
+# ------------------------------------------------------------------
+# Module-level helpers (no coordinator state needed)
+# ------------------------------------------------------------------
 
-    def _parse_speakers(self, raw_vis: str, raw_act: str) -> Dict[str, Any]:
-        """Parse speaker data from 0xAE (visibility) and 0xAF (status) responses.
 
-        0xAE response format:
-            V00,V01,V02,... (visible speaker indices, 0-based)
+def _merge_user_a(*responses: A16Response) -> Dict[str, str]:
+    """Merge User A dicts from multiple responses, preferring non-empty values."""
+    merged: Dict[str, str] = {}
+    for resp in responses:
+        for key, value in resp.user_a.items():
+            if value or key not in merged:
+                merged[key] = value
+    return merged
 
-        0xAF response format:
-            ALL=SOLO|ALL=MUTE (the mode)
-            A00,A01,A02,... (active speaker indices, 0-based)
 
-        Returns:
-            Dict keyed by speaker ID (1-50):
-                {
-                    1: {"name": "L",  "visible": True,  "state": "active"},
-                    2: {"name": "R",  "visible": True,  "state": "mute"},
-                    ...
-                }
-        """
-        visible_ids = set()
-        active_ids = set()
-        mode = None
+def _build_speaker_dict(visible: set, active: set) -> Dict[Any, Any]:
+    """Build the per-speaker state dict used by all platform entities.
 
-        # Parse visibility from 0xAE response (V00, V01, etc.)
-        if raw_vis:
-            for token in raw_vis.split("\x00"):
-                token = token.strip()
-                if token.startswith("V") and len(token) >= 2:
-                    try:
-                        idx = int(token[1:3])
-                        visible_ids.add(idx)
-                    except (ValueError, IndexError):
-                        pass
+    Speaker IDs in A16Response are 0-based (V00 = speaker index 0).
+    The SPEAKER_NAMES dict and entity unique-IDs use 1-based IDs.
 
-        # Parse status from 0xAF response (A00, ALL=, etc.)
-        if raw_act:
-            for token in raw_act.split("\x00"):
-                token = token.strip()
-                if not token:
-                    continue
+    Returns:
+        {
+            1: {"name": "L",  "visible": True,  "state": "active"},
+            2: {"name": "R",  "visible": True,  "state": "mute"},
+            ...50...
+        }
+    """
+    result: Dict[int, Dict[str, Any]] = {}
+    for speaker_id in range(1, 51):
+        idx = speaker_id - 1  # A16 protocol is 0-based
+        name = RealiserA16Hex.SPEAKER_NAMES.get(speaker_id, f"Spk{speaker_id}")
+        result[speaker_id] = {
+            "name": name,
+            "visible": idx in visible,
+            "state": "active" if idx in active else "mute",
+        }
+    return result
 
-                if token.startswith("ALL="):
-                    mode = token.split("=", 1)[1]
-                elif token.startswith("A") and len(token) >= 2:
-                    try:
-                        idx = int(token[1:3])
-                        active_ids.add(idx)
-                    except (ValueError, IndexError):
-                        pass
 
-        # Build result dictionary
-        result = {}
-        for speaker_id in range(1, 51):
-            name = RealiserA16Hex.SPEAKER_NAMES.get(speaker_id, f"Spk{speaker_id}")
-            # Speaker IDs in response are 0-based, we use 1-based
-            is_visible = (speaker_id - 1) in visible_ids
-            is_active = (speaker_id - 1) in active_ids
-
-            result[speaker_id] = {
-                "name": name,
-                "visible": is_visible,
-                "state": "active" if is_active else "mute",
-            }
-
-        _LOGGER.debug(
-            "Parsed speakers - mode: %s, visible: %s, active: %s",
-            mode,
-            visible_ids,
-            active_ids,
-        )
-
-        return result
-
-    def _parse_assignments(self, raw: str) -> Dict[str, Any]:
-        """Parse ACH/BCH assignment tokens."""
-        result: Dict[str, Any] = {"global": {}, "ach": {}, "bch": {}}
-        if not raw:
-            return result
-        for token in raw.replace("\r", "").split("\x00"):
-            token = token.strip()
-            if "=" in token:
-                k, v = token.split("=", 1)
-                result["global"][k.strip()] = v.strip()
-            elif token.startswith("A") and len(token) >= 3:
-                try:
-                    idx = int(token[1:3])
-                    result["ach"][idx] = token
-                except ValueError:
-                    pass
-            elif token.startswith("B") and len(token) >= 3:
-                try:
-                    idx = int(token[1:3])
-                    result["bch"][idx] = token
-                except ValueError:
-                    pass
-        return result
+# ------------------------------------------------------------------
+# Home Assistant entry points
+# ------------------------------------------------------------------
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -301,11 +292,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
 
-    # Register services
     async def async_refresh_speakers(call: ServiceCall) -> None:
         """Service to manually refresh speaker data."""
         await hass.async_add_executor_job(coordinator.refresh_speakers)
-        # Also trigger a coordinator refresh to update all entities
         await coordinator.async_request_refresh()
 
     hass.services.async_register(DOMAIN, "refresh_speakers", async_refresh_speakers)
