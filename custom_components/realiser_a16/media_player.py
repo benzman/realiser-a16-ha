@@ -163,8 +163,14 @@ class RealiserA16Zone(MediaPlayerEntity):
             if self.zone == "A"
             else RealiserA16Hex.CMD_VOL_B_UP
         )
-        await self.hass.async_add_executor_job(self.coordinator.send_command, cmd)
-        # No full refresh - volume change is local, will be updated on next poll
+        resp = await self.hass.async_add_executor_job(
+            self.coordinator.send_command, cmd
+        )
+        # Update volume immediately from response
+        if self.coordinator.data and resp.user_a:
+            key = "VA" if self.zone == "A" else "VB"
+            self.coordinator.data["status"][key] = resp.user_a.get(key, "")
+        self.async_write_ha_state()
 
     async def async_volume_down(self) -> None:
         """Decrease volume by one step."""
@@ -173,8 +179,14 @@ class RealiserA16Zone(MediaPlayerEntity):
             if self.zone == "A"
             else RealiserA16Hex.CMD_VOL_B_DN
         )
-        await self.hass.async_add_executor_job(self.coordinator.send_command, cmd)
-        # No full refresh
+        resp = await self.hass.async_add_executor_job(
+            self.coordinator.send_command, cmd
+        )
+        # Update volume immediately from response
+        if self.coordinator.data and resp.user_a:
+            key = "VA" if self.zone == "A" else "VB"
+            self.coordinator.data["status"][key] = resp.user_a.get(key, "")
+        self.async_write_ha_state()
 
     async def async_mute_volume(self, mute: bool) -> None:
         """Mute/unmute (toggle - the A16 toggles on each MUTE command)."""
@@ -182,7 +194,7 @@ class RealiserA16Zone(MediaPlayerEntity):
             RealiserA16Hex.CMD_MUTE_A if self.zone == "A" else RealiserA16Hex.CMD_MUTE_B
         )
         await self.hass.async_add_executor_job(self.coordinator.send_command, cmd)
-        # No full refresh - will be updated on next poll
+        # No full refresh - mute state will be updated on next poll
 
     async def async_select_source(self, source: str) -> None:
         """Select input source."""
