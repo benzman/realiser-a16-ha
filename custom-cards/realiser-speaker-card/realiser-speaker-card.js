@@ -3,10 +3,11 @@
 class RealiserSpeakerCard extends HTMLElement {
   setConfig(config) {
     if (!config.entity) {
-      throw new Error('You need to define an entity');
+      throw new Error('You need to define an entity (sensor.realiser_a16_speakers)');
     }
     this._config = config;
     this._entity = config.entity;
+    this._title = config.title || 'Speaker Grid';
     this._speakerData = {};
     this._mode = 'MUTE'; // Default mode
     this._hass = null;
@@ -69,14 +70,25 @@ class RealiserSpeakerCard extends HTMLElement {
      });
    }
 
-   _refreshVisibility() {
-     if (!this._hass) return;
+  _refreshVisibility() {
+    if (!this._hass) {
+      console.warn('Realiser Speaker Card: Home Assistant instance not available');
+      return;
+    }
 
-     // Call the refresh_speakers service to get latest visibility and status
-     this._hass.callService('realiser_a16', 'refresh_speakers').catch(err => {
-       console.error('Failed to refresh speaker visibility:', err);
-     });
-   }
+    // Check if service exists first
+    const serviceName = 'realiser_a16.refresh_speakers';
+    const services = this._hass.services;
+    if (!services || !services[serviceName]) {
+      console.error(`Realiser Speaker Card: Service '${serviceName}' not found. Make sure you're using Realiser A16 integration v0.2.0+`);
+      return;
+    }
+
+    // Call the refresh_speakers service to get latest visibility and status
+    this._hass.callService('realiser_a16', 'refresh_speakers').catch(err => {
+      console.error('Realiser Speaker Card: Failed to refresh speaker visibility:', err);
+    });
+  }
 
   _getSpeakerColor(speakerId) {
     // Speaker types based on ID - following the same layout as example
@@ -163,7 +175,7 @@ class RealiserSpeakerCard extends HTMLElement {
     const header = document.createElement('div');
     header.className = 'realiser-header';
     header.innerHTML = `
-      <div class="realiser-title">Speaker Grid</div>
+      <div class="realiser-title">${this._title}</div>
       <div class="realiser-mode">Mode: ${this._mode}</div>
       <div class="realiser-actions">
         <button class="realiser-visibility-btn">Visibility</button>

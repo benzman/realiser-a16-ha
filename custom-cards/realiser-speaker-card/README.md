@@ -18,7 +18,14 @@ Ein benutzerdefiniertes Home Assistant Lovelace Card zur Anzeige und Steuerung I
 - Anzeige des aktuellen Status (aktiv/muted) mit abgedunkelten Farben
 - Klick auf jeden Lautsprecher zum Solo/Mute (abhängig vom Modus)
 - "ALL" Button zum Umschalten zwischen SOLO und MUTE ALL Modi
+- "Visibility" und "Refresh" Buttons für manuelle Datenaktualisierung
 - Automatische Synchronisierung mit dem Realiser A16 Gerät
+
+## Voraussetzungen
+
+- Home Assistant Installation
+- **Realiser A16 Integration v0.2.0 oder neuer** (für den refresh_speakers Service)
+- Die Integration muss mit `enable_speaker_switches: true` konfiguriert sein, um individuelle Lautsprechersteuerung zu aktivieren
 
 ## Voraussetzungen
 
@@ -81,20 +88,24 @@ title: "Speaker Grid"
 
 ## Fehlerbehebung
 
-### Lautsprecher-Buttons reagieren nicht
-- Überprüfen Sie, ob `enable_speaker_switches: true` in Ihrer Integration-Konfiguration gesetzt ist
-- Prüfen Sie, ob die `switch.realiser_a16_speaker_*` Entitäten existieren
-- Prüfen Sie die Home Assistant Logs auf Fehler
+### Karte zeigt "Configuration Error" oder lädt nicht
+1. **Prüfe die Entity ID**: Stelle sicher, dass `sensor.realiser_a16_speakers` existiert ( Developer Tools → States suchen)
+2. **Integration Version**: Du brauchst Realiser A16 Integration **v0.2.0 oder neuer** für den `refresh_speakers` Service
+3. **Ressource prüfen**: Öffne im Browser `http://deine-ha-ip:8123/local/realiser-speaker-card.js` - müsste die JS-Datei anzeigen
+4. **Browser Konsole**: Drücke F12 → Console, dort stehen oft genauere Fehlermeldungen
 
-### Keine Lautsprecher angezeigt
-- Stellen Sie sicher, dass der `sensor.realiser_a16_speakers` Sensor verfügbar ist
-- Prüfen Sie, ob Ihr Realiser A16 Gerät erreichbar ist
-- Die Lautsprecher-Sichtbarkeit wird über die Geräte-Konfiguration gesteuert (0xAE Befehl)
+### "Service not found" Fehler in Konsole
+- Die Integration ist zu alt (vor v0.2.0). Aktualisiere auf v0.2.0+
+- Oder der Service ist nicht verfügbar, weil die Integration nicht geladen wurde
 
-### Grid ist leer oder falsch angeordnet
-- Die Karte zeigt alle 52 möglichen Lautsprecherpositionen basierend auf dem Standard-Layout
-- Nicht-verbundene oder deaktivierte Lautsprecher sind ausgegraut
-- Die Anordnung kann in der JavaScript-Datei bei Bedarf angepasst werden
+### Keine oder falsche Lautsprecher angezeigt
+- Stelle sicher, dass `enable_speaker_switches: true` in der Integration aktiviert ist
+- Prüfe, ob das Realiser A16 Gerät die Speaker-Daten liefert (0xAE und 0xAF Befehle)
+- Nicht alle 52 Positionen sind bei jedem Setup belegt; nicht sichtbare Speaker sind ausgegraut
+
+### Buttons reagieren nicht
+- Die `switch.realiser_a16_speaker_*` Entitäten müssen existieren (nur mit `enable_speaker_switches: true`)
+- Prüfe die Home Assistant Logs auf Fehler bei Service-Aufrufen
 
 ## Anpassung der Farben und Anordnung
 
