@@ -32,17 +32,28 @@ class RealiserSpeakerCard extends HTMLElement {
 
   _toggleSpeaker(speakerId) {
     if (!this._hass) return;
-    // Fix: speakerId comes as string from event, need to convert to int
     const id = parseInt(speakerId);
-    const entityId = `switch.realiser_a16_speaker_${id}`;
     
-    console.log(`Toggling speaker ID: ${speakerId} (as int: ${id}), entity: ${entityId}`);
+    // Try different entity name formats
+    const possibleNames = [
+      `switch.realiser_a16_speaker_${id}`,
+      `switch.realiser_a16_speaker_${id.toString().padStart(2, '0')}`,
+    ];
+    
+    let entityId = possibleNames[0];
+    for (const name of possibleNames) {
+      if (this._hass.states[name]) {
+        entityId = name;
+        break;
+      }
+    }
+    
+    console.log(`Trying to toggle speaker ${speakerId}, entity: ${entityId}`);
     
     const state = this._hass.states[entityId];
-    console.log('Entity state:', state);
     
     if (!state) {
-      console.log(`Speaker switch not found: ${entityId}`);
+      console.log(`Speaker switch not found. Available entities:`, Object.keys(this._hass.states).filter(k => k.includes('speaker')));
       return;
     }
     
