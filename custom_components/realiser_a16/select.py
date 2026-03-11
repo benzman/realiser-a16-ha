@@ -1,5 +1,6 @@
 """Select entities for Realiser A16 input selection and mode control."""
 
+import asyncio
 import logging
 
 from homeassistant.components.select import SelectEntity
@@ -107,11 +108,7 @@ class RealiserA16InputSelect(SelectEntity):
         )
 
         # Small delay to ensure zone is selected
-        await self.coordinator.hass.async_create_task(
-            self.coordinator.hass.async_add_executor_job(
-                lambda: __import__("time").sleep(0.1)
-            )
-        )
+        await asyncio.sleep(0.1)
 
         # Then send input command
         input_cmd = INPUT_COMMANDS[option]
