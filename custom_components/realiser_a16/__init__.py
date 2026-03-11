@@ -124,73 +124,125 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
     # ------------------------------------------------------------------
 
     def _fetch_data(self) -> Dict[str, Any]:
-        """Fetch all device state with the minimum number of commands.
+        """Fetch device state with optimized two-stage polling.
 
-        The A16 always returns the full User A status block together with
-        every command response.  We exploit this to gather User A data
-        "for free" alongside the commands we actually care about.
+        Stage 1 (every 10s): Power + User A + User B (3 commands)
+            - 0x2E → power + user_a (async)
+            - 0x80 → user_a (full info)
+            - 0xA0 → user_b
 
-        Commands used:
-            0x37  DSP assignments  → ach/bch + user_a (free)
-            0xAE  Speaker visibility → visible_speakers + user_a (free)
-            0xAF  Speaker status    → active_speakers + speaker_mode + user_a (free)
-            0xA0  User B info       → user_b (only command that returns User B)
-            0x2E  Power status      → power (fast, always last so we have PWR=)
+        Stage 2 (every 60s): Assignments + Speakers (3 commands)
+            - 0x37 → ach/bch assignments + user_a (async)
+            - 0xAE → visible speakers + user_a (async)
+            - 0xAF → active speakers + mode + user_a (async)
+
+        We alternate between stages and merge data with existing coordinator data.
         """
         try:
-            r_assign = self._send(0x37)
-            _LOGGER.debug(
-                "0x37 ach=%d bch=%d",
-                len(r_assign.assignments["ach"]),
-                len(r_assign.assignments["bch"]),
-            )
+            # Determine which stage to run based on existing data age
+            # For simplicity, we alternate: first fast, then slow, then fast...
+            is_slow_stage = hasattr(self, "_slow_stage_counter")
+            if not hasattr(self, "_slow_stage_counter"):
+                self._slow_stage_counter = 0
 
-            r_vis = self._send(0xAE)
-            _LOGGER.debug("0xae visible=%s", r_vis.visible_speakers)
+            self._slow_stage_counter += 1
 
-            r_act = self._send(0xAF)
-            _LOGGER.debug(
-                "0xaf active=%s mode=%s", r_act.active_speakers, r_act.speaker_mode
-            )
-
-            r_b = self._send(0xA0)
-            _LOGGER.debug("0xa0 user_b keys=%s", list(r_b.user_b.keys()))
-
-            r_pwr = self._send(0x2E)
-            _LOGGER.debug("0x2e power=%s", r_pwr.power)
-
-            # --- Merge User A from whichever response has the most fields ---
-            # All responses carry async User A data; pick the richest one.
-            user_a = _merge_user_a(r_assign, r_vis, r_act, r_pwr)
-
-            # --- Flat status dict for all platform entities ---
-            status: Dict[str, str] = {}
-            status.update(user_a)
-            status.update(r_b.user_b)
-            if r_pwr.power:
-                status["PWR"] = r_pwr.power
-
-            # --- Speaker mode from 0xAF (authoritative), fallback 0xAE ---
-            speaker_mode = r_act.speaker_mode or r_vis.speaker_mode
-
-            return {
-                "connected": True,
-                "status": status,
-                "assignments": {
-                    "ach": r_assign.assignments["ach"],
-                    "bch": r_assign.assignments["bch"],
-                },
-                "speakers": _build_speaker_dict(
-                    r_vis.visible_speakers, r_act.active_speakers
-                ),
-                "speaker_mode": speaker_mode,
-                "firmware": r_pwr.firmware or r_assign.firmware,
-            }
+            if self._slow_stage_counter % 6 == 0:
+                # Slow stage every 6th update (~60s)
+                return self._fetch_slow_stage()
+            else:
+                # Fast stage (~10s)
+                return self._fetch_fast_stage()
 
         except Exception as err:
             self._disconnect()
             _LOGGER.error("Failed to fetch data: %s", err, exc_info=True)
             raise UpdateFailed(f"Failed to fetch data: {err}") from err
+
+    def _fetch_fast_stage(self) -> Dict[str, Any]:
+        """Fast stage: Power + User A + User B (3 commands)."""
+        r_pwr = self._send(0x2E)
+        _LOGGER.debug("0x2e power=%s", r_pwr.power)
+
+        r_a = self._send(0x80)
+        _LOGGER.debug("0x80 user_a keys=%s", list(r_a.user_a.keys()))
+
+        r_b = self._send(0xA0)
+        _LOGGER.debug("0xa0 user_b keys=%s", list(r_b.user_b.keys()))
+
+        # Merge with existing data
+        existing = self.data or {}
+        status = dict(existing.get("status", {}))
+        status.update(r_a.user_a)
+        status.update(r_b.user_b)
+        if r_pwr.power:
+            status["PWR"] = r_pwr.power
+
+        result = {
+            "connected": True,
+            "status": status,
+            "assignments": existing.get("assignments", {"ach": {}, "bch": {}}),
+            "speakers": existing.get("speakers", {}),
+            "speaker_mode": existing.get("speaker_mode"),
+            "firmware": existing.get("firmware", {}),
+        }
+        return result
+
+    def _fetch_slow_stage(self) -> Dict[str, Any]:
+        """Slow stage: Assignments + Speaker Visibility + Speaker Status (3 commands)."""
+        r_assign = self._send(0x37)
+        _LOGGER.debug(
+            "0x37 ach=%d bch=%d",
+            len(r_assign.assignments["ach"]),
+            len(r_assign.assignments["bch"]),
+        )
+
+        r_vis = self._send(0xAE)
+        _LOGGER.debug("0xae visible=%s", r_vis.visible_speakers)
+
+        r_act = self._send(0xAF)
+        _LOGGER.debug(
+            "0xaf active=%s mode=%s", r_act.active_speakers, r_act.speaker_mode
+        )
+
+        # Merge with existing data (keep fast-stage data)
+        existing = self.data or {}
+        status = dict(existing.get("status", {}))
+
+        # Update with latest user_a from slow commands
+        user_a = _merge_user_a(r_assign, r_vis, r_act)
+        for k, v in user_a.items():
+            if v:
+                status[k] = v
+
+        # Update assignments and speakers
+        result = {
+            "connected": True,
+            "status": status,
+            "assignments": {
+                "ach": r_assign.assignments["ach"],
+                "bch": r_assign.assignments["bch"],
+            },
+            "speakers": _build_speaker_dict(
+                r_vis.visible_speakers, r_act.active_speakers
+            ),
+            "speaker_mode": r_act.speaker_mode or r_vis.speaker_mode,
+            "firmware": r_assign.firmware,
+        }
+        result = {
+            "connected": True,
+            "status": status,
+            "assignments": {
+                "ach": r_assign.assignments["ach"],
+                "bch": r_assign.assignments["bch"],
+            },
+            "speakers": _build_speaker_dict(
+                r_vis.visible_speakers, r_act.active_speakers
+            ),
+            "speaker_mode": r_act.speaker_mode or r_vis.speaker_mode,
+            "firmware": r_assign.firmware,
+        }
+        return result
 
     def refresh_speakers(self) -> Dict[str, Any]:
         """Fetch speaker visibility + status on-demand (called by speaker switches).
