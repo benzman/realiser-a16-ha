@@ -149,14 +149,22 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
 
             if self._slow_stage_counter % 6 == 0:
                 # Slow stage every 6th update (~60s)
-                return self._fetch_slow_stage()
+                result = self._fetch_slow_stage()
             else:
                 # Fast stage (~10s)
-                return self._fetch_fast_stage()
+                result = self._fetch_fast_stage()
+            self._reconnect_failures = 0
+            return result
 
         except Exception as err:
             self._disconnect()
-            _LOGGER.error("Failed to fetch data: %s", err, exc_info=True)
+            self._reconnect_failures = getattr(self, "_reconnect_failures", 0) + 1
+            _LOGGER.error(
+                "Failed to fetch data (failure #%d): %s",
+                self._reconnect_failures,
+                err,
+                exc_info=True,
+            )
             raise UpdateFailed(f"Failed to fetch data: {err}") from err
 
     def _fetch_fast_stage(self) -> Dict[str, Any]:
@@ -173,8 +181,10 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
         # Merge with existing data
         existing = self.data or {}
         status = dict(existing.get("status", {}))
-        status.update(r_a.user_a)
-        status.update(r_b.user_b)
+        if r_a.user_a:
+            status.update(r_a.user_a)
+        if r_b.user_b:
+            status.update(r_b.user_b)
         if r_pwr.power:
             status["PWR"] = r_pwr.power
 
@@ -216,19 +226,6 @@ class RealiserA16DataUpdateCoordinator(DataUpdateCoordinator):
                 status[k] = v
 
         # Update assignments and speakers
-        result = {
-            "connected": True,
-            "status": status,
-            "assignments": {
-                "ach": r_assign.assignments["ach"],
-                "bch": r_assign.assignments["bch"],
-            },
-            "speakers": _build_speaker_dict(
-                r_vis.visible_speakers, r_act.active_speakers
-            ),
-            "speaker_mode": r_act.speaker_mode or r_vis.speaker_mode,
-            "firmware": r_assign.firmware,
-        }
         result = {
             "connected": True,
             "status": status,

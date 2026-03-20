@@ -29,7 +29,7 @@ class RealiserA16ConfigFlow(config_entries.ConfigFlow, domain="realiser_a16"):
         """Initialize flow."""
         self._host = ""
         self._port = 4101
-        self._timeout = 30.0
+        self._timeout = 10.0
         self._update_interval = 10
         self._enable_speaker_switches = False
 
@@ -42,7 +42,7 @@ class RealiserA16ConfigFlow(config_entries.ConfigFlow, domain="realiser_a16"):
         if user_input is not None:
             self._host = user_input.get(CONF_HOST, "")
             self._port = user_input.get(CONF_PORT, 4101)
-            self._timeout = user_input.get(CONF_TIMEOUT, 30.0)
+            self._timeout = user_input.get(CONF_TIMEOUT, 10.0)
             self._update_interval = user_input.get("update_interval", 10)
             self._enable_speaker_switches = user_input.get(CONF_SPEAKER_SWITCHES, False)
 
@@ -66,7 +66,7 @@ class RealiserA16ConfigFlow(config_entries.ConfigFlow, domain="realiser_a16"):
                     },
                 )
 
-            except Exception as exc:  # noqa: BLE001
+            except (OSError, TimeoutError, socket.timeout, ConnectionError) as exc:
                 _LOGGER.exception("Connection test failed: %s", exc)
                 errors["base"] = "cannot_connect"
 
@@ -112,7 +112,7 @@ class RealiserA16ConfigFlow(config_entries.ConfigFlow, domain="realiser_a16"):
                 )
                 client.close()
                 return resp
-            except Exception as e:
+            except (OSError, TimeoutError, socket.timeout) as e:
                 _LOGGER.exception("sync_test failed: %s", e)
                 raise
 
@@ -121,7 +121,7 @@ class RealiserA16ConfigFlow(config_entries.ConfigFlow, domain="realiser_a16"):
         # A valid connection returns either a power state or User A info
         if not result.power and not result.user_a:
             _LOGGER.error("Empty response received from device")
-            raise Exception("No valid response from device")
+            raise ConnectionError("No valid response from device")
 
         _LOGGER.info("Connection test successful!")
         return True

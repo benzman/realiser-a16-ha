@@ -211,20 +211,13 @@ class RealiserA16SpeakerSwitch(SwitchEntity):
         """Activate/solo this speaker (sends toggle command)."""
         cmd = RealiserA16Hex.CMD_SPEAKER_BASE + self.speaker_id
         await self.hass.async_add_executor_job(self.coordinator.send_command, cmd)
-        # Refresh speaker state on-demand
-        await self.coordinator.hass.async_add_executor_job(
-            self.coordinator.refresh_speakers
-        )
-        self.async_write_ha_state()
+        await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Mute/deactivate this speaker (sends toggle command again)."""
         cmd = RealiserA16Hex.CMD_SPEAKER_BASE + self.speaker_id
         await self.hass.async_add_executor_job(self.coordinator.send_command, cmd)
-        await self.coordinator.hass.async_add_executor_job(
-            self.coordinator.refresh_speakers
-        )
-        self.async_write_ha_state()
+        await self.coordinator.async_request_refresh()
 
     async def async_added_to_hass(self) -> None:
         """Register update listener."""

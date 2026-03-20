@@ -87,6 +87,8 @@ class RealiserA16InputSelect(SelectEntity):
         status = self.coordinator.data.get("status", {})
         key = "IN" if self.zone == "A" else "BIN"
         value = status.get(key, "").strip()
+        if not value and self.zone == "B":
+            _LOGGER.debug("Zone B input key BIN not found in status")
         # Direct match
         if value in self._attr_options:
             return value
@@ -103,7 +105,7 @@ class RealiserA16InputSelect(SelectEntity):
 
         # Send zone select first (A or B) to ensure we're controlling correct zone
         zone_cmd = CMD_ZONE_A if self.zone == "A" else CMD_ZONE_B
-        await self.coordinator.hass.async_add_executor_job(
+        await self.hass.async_add_executor_job(
             self.coordinator.send_command, zone_cmd
         )
 
@@ -112,7 +114,7 @@ class RealiserA16InputSelect(SelectEntity):
 
         # Then send input command
         input_cmd = INPUT_COMMANDS[option]
-        await self.coordinator.hass.async_add_executor_job(
+        await self.hass.async_add_executor_job(
             self.coordinator.send_command, input_cmd
         )
         # No full refresh - source change will be picked up on next poll
@@ -174,7 +176,7 @@ class RealiserA16ModeSelect(SelectEntity):
             return
 
         # Toggle to requested mode (0x1A flips SOLO ↔ MUTE)
-        await self.coordinator.hass.async_add_executor_job(
+        await self.hass.async_add_executor_job(
             self.coordinator.send_command,
             RealiserA16Hex.CMD_ALL_TOGGLE,  # 0x1A
         )
@@ -255,7 +257,7 @@ class RealiserA16PresetSelect(SelectEntity):
 
         cmd = self._PRESET_BASE[self.zone] + (n - 1)
         _LOGGER.debug("Loading preset %d for zone %s (cmd=0x%02x)", n, self.zone, cmd)
-        await self.coordinator.hass.async_add_executor_job(
+        await self.hass.async_add_executor_job(
             self.coordinator.send_command, cmd
         )
         # No full refresh - preset change will be picked up on next poll

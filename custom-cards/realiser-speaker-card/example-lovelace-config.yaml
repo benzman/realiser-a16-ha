@@ -1,45 +1,14 @@
 # Example Lovelace configuration for the Realiser Speaker Card
 
-# Option 1: Basic configuration as a standalone card:
-# Add this to your Lovelace dashboard as a new card (via "Karte hinzufügen" → "Benutzerdefinierte Karte" → YAML)
-#
-# type: custom:realiser-speaker-card
-# entity: sensor.realiser_a16_speakers
+# Step 1: Add the JavaScript resource in HA
+# Go to Settings → Resources → Add Resource
+#   - Type: JavaScript Module
+#   - URL: /local/realiser-speaker-card.js
 
-# Option 2: With optional title:
-# type: custom:realiser-speaker-card
-# entity: sensor.realiser_a16_speakers
-# title: "Realiser A16 Speaker Grid"
+# Step 2: Add the card to your dashboard
+# Use this entity ID (replace with your device IP):
+#   sensor.realiser_a16_192_168_160_19_speakers
 
-# Option 3: As part of a larger dashboard view (in your views.yaml or dashboard configuration):
-#
-# views:
-#   - title: Home
-#     cards:
-#       - type: entities
-#         title: Realiser A16 Controls
-#         entities:
-#           - sensor.realiser_a16_speakers
-#           - media_player.realiser_a16_zone_a
-#           - media_player.realiser_a16_zone_b
-#           - switch.realiser_a16_power
-#           - switch.realiser_a16_all_solo
-#
-#       - type: custom:realiser-speaker-card
-#         entity: sensor.realiser_a16_speakers
-#         title: Speaker Grid
-
-# Raw YAML editor example (copy this directly into a custom card):
-#
-# {
-#   "type": "custom:realiser-speaker-card",
-#   "entity": "sensor.realiser_a16_speakers",
-#   "title": "Speaker Grid"
-# }
-
-# Important: Make sure you have the JavaScript resource loaded in your Lovelace:
-# 1. Go to Lovelace → ⋮ (three dots) → Ressourcen
-# 2. Add Resource
-#    - Type: JavaScript Module
-#    - URL: /local/realiser-speaker-card.js?v=1
-# 3. Reload the page
+type: custom:realiser-speaker-card
+entity: sensor.realiser_a16_192_168_160_19_speakers
+title: "Speaker Grid"

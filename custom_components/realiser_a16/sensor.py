@@ -1,6 +1,7 @@
 """Sensor entities for Realiser A16."""
 
 import logging
+import re
 from typing import Any, Dict, Optional
 
 from homeassistant.components.sensor import SensorEntity, SensorStateClass
@@ -326,6 +327,7 @@ class RealiserA16DiagnosticsSensor(SensorEntity):
                 "BSPKR",
                 "BQFILE",
                 "BQNAME",
+                "BQDATE",
                 "BQTYPE",
                 "BQMOD",
                 "BTACT",
@@ -454,7 +456,7 @@ class RealiserA16StatusKeySensor(SensorEntity):
         self.coordinator = coordinator
         self._label = label
         self._status_key = status_key
-        slug = status_key.lower().replace(" ", "_")
+        slug = re.sub(r'[^a-z0-9_]', '_', status_key.lower())
         self._attr_unique_id = f"{coordinator.host}_info_{slug}"
         self._attr_device_info = {
             "identifiers": {(DOMAIN, coordinator.host)},
