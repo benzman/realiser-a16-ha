@@ -371,11 +371,15 @@ class RealiserA16Hex:
                 break  # 500 ms of silence → done
 
             if not chunk:
-                break  # connection closed
+                # Server closed the connection - raise so _send() can reconnect
+                raise OSError("Connection closed by remote host")
 
             buf += chunk
             # Give the device time to send the next burst
             time.sleep(0.15)
+
+        if not buf:
+            raise OSError("No data received - connection may have been closed")
 
         # Trim trailing null / CR
         if b"\x00" in buf:
